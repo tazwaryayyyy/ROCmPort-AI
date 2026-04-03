@@ -60,7 +60,7 @@ Then open http://localhost:8000 in your browser.
 
 ---
 
-## �📁 Project Structure
+## � Project Structure
 
 ```
 ROCmPort AI/
@@ -291,34 +291,6 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 8. **GitHub PR Simulation** - One-click export with diffs and reports
 9. **Predictive Analysis** - AI predicts performance gains before optimization
 10. **Honest Performance Claims** - Compares optimized ROCm vs baseline HIP, not fabricated NVIDIA comparisons
-
----
-
-## 🎤 Demo Script (60 seconds)
-
-"Welcome to ROCmPort AI! Watch as we transform CUDA code into optimized AMD ROCm in real-time."
-
-*[Paste matrix_multiply.cu code]*
-
-"Our AI analyzer detects the warp size issue - this kernel assumes 32-thread warps but AMD uses 64-thread wavefronts."
-
-*[Show translator running with hipify + LLM correction]*
-
-"The translator fixes the mechanical changes, but our optimizer finds opportunities for shared memory tiling."
-
-*[Show first optimization attempt with 0.85x speedup]*
-
-"Most tools would stop here. But ROCmPort AI detects the performance regression and automatically retries."
-
-*[Show second optimization with 1.31x speedup]*
-
-"Now we have 54% better performance! The verification layer confirms the output is mathematically correct."
-
-*[Show final report with cost savings]*
-
-"This saves 3-6 weeks of manual work and $20,000+ in engineering costs."
-
-"Most tools stop at translation. We go further - we prove the code actually runs better on AMD."
 
 ---
 
