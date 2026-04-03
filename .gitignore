@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+env/
+venv/
+.env
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# FastAPI / Uvicorn
+*.pid
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+backend/.env
+*.log
+mock_rocprof_output.json
+*.db
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Docker
+*.tar
+
+# Test outputs
+test_output/

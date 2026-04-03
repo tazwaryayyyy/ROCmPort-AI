@@ -1,0 +1,199 @@
+import json
+import asyncio
+import zipfile
+import tempfile
+import os
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from models import PortRequest, VerificationResult
+from agents.coordinator import run_pipeline
+from agents.tester import run as run_tester
+from agents.analyzer import AnalyzerResult, WorkloadType
+
+app = FastAPI(
+    title="ROCmPort AI",
+    description="The fastest way to escape CUDA lock-in and run on AMD.",
+    version="1.0.0",
+    contact={
+        "name": "Tazwar Ahnaf Enan",
+        "url": "https://github.com/tazwaryayyyy",
+        "email": "tazwardevp@gmail.com",
+    },
+    license_info={
+        "name": "MIT",
+    },
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "ROCmPort AI"}
+
+
+@app.post("/port")
+async def port_cuda_code(req: PortRequest):
+    """
+    Main endpoint. Streams SSE events as the agent pipeline runs.
+    Each event is a JSON AgentEvent object.
+    """
+    if not req.cuda_code or len(req.cuda_code.strip()) < 10:
+        raise HTTPException(status_code=400, detail="No CUDA code provided")
+
+    async def event_stream():
+        try:
+            async for event in run_pipeline(req.cuda_code, req.kernel_name or "custom", req.simple_mode or False):
+                data = json.dumps(event.model_dump())
+                yield f"data: {data}\n\n"
+                await asyncio.sleep(0.05)   # Let the client breathe between events
+        except Exception as e:
+            error_event = {
+                "agent": "coordinator",
+                "status": "failed",
+                "message": "Pipeline error",
+                "detail": str(e)
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
+
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
+@app.post("/recompile")
+async def recompile_edited_code(req: dict):
+    """
+    Recompile endpoint for human override feature.
+    Accepts edited HIP code and re-runs tester.
+    """
+    try:
+        edited_code = req.get("edited_code")
+        kernel_name = req.get("kernel_name", "custom")
+        
+        if not edited_code or len(edited_code.strip()) < 10:
+            raise HTTPException(status_code=400, detail="No HIP code provided")
+        
+        # Create a mock analyzer result for testing
+        analyzer_result = AnalyzerResult(
+            kernels_found=["test_kernel"],
+            cuda_apis=["hipMalloc", "hipMemcpy"],
+            warp_size_issue=False,
+            warp_size_detail=None,
+            workload_type=WorkloadType.MEMORY_BOUND,
+            sharding_detected=False,
+            difficulty="Easy",
+            difficulty_reason="Simple test kernel"
+        )
+        
+        # Run tester with edited code
+        tester_result = await asyncio.to_thread(run_tester, edited_code, analyzer_result, 2, kernel_name)
+        
+        return {
+            "success": True,
+            "result": tester_result.model_dump()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Recompilation failed: {str(e)}")
+
+
+@app.post("/export")
+async def export_migration_package(req: dict):
+    """
+    Export endpoint for GitHub PR simulation.
+    Returns a zip file with diff and migration report.
+    """
+    try:
+        original_cuda = req.get("original_cuda")
+        final_rocm = req.get("final_rocm")
+        migration_report = req.get("migration_report", {})
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_file:
+            with zipfile.ZipFile(tmp_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+                # Add diff file
+                diff_content = f"""# CUDA to ROCm Migration Diff
+
+## Original CUDA Code
+```cuda
+{original_cuda}
+```
+
+## Final ROCm Code
+```hip
+{final_rocm}
+```
+
+## Migration Summary
+{json.dumps(migration_report, indent=2)}
+"""
+                zf.writestr("migration.diff", diff_content)
+                
+                # Add migration report as markdown
+                md_report = f"""# ROCmPort AI Migration Report
+
+## Performance Results
+- Speedup: {migration_report.get('speedup', 'N/A')}x
+- Bandwidth Utilization: {migration_report.get('bandwidth_utilized', 'N/A')}%
+- Total Changes: {migration_report.get('total_changes', 'N/A')}
+
+## AMD Advantage Explanation
+{migration_report.get('amd_advantage_explanation', 'N/A')}
+
+## Cost Impact
+{migration_report.get('cost_estimate', 'N/A')}
+
+Generated by ROCmPort AI - The fastest way to escape CUDA lock-in and run on AMD.
+"""
+                zf.writestr("migration_report.md", md_report)
+            
+            # Read the zip file content
+            with open(tmp_file, 'rb') as f:
+                zip_content = f.read()
+            
+            # Clean up
+            os.unlink(tmp_file)
+        
+        from fastapi.responses import Response
+        return Response(
+            content=zip_content,
+            media_type="application/zip",
+            headers={"Content-Disposition": "attachment; filename=rocmport_migration.zip"}
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+
+@app.get("/demo-kernels")
+async def list_demo_kernels():
+    import os
+    kernels_dir = os.path.join(os.path.dirname(__file__), "demo_kernels")
+    kernels = {}
+    for fname in os.listdir(kernels_dir):
+        if fname.endswith(".cu"):
+            name = fname.replace(".cu", "")
+            with open(os.path.join(kernels_dir, fname)) as f:
+                kernels[name] = f.read()
+    return kernels
+
+
+# Serve frontend if built
+import os
+frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
+if os.path.exists(frontend_path):
+    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
