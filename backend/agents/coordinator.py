@@ -37,14 +37,24 @@ def simplify_explanation(report: FinalReport) -> str:
     """Convert technical explanations to simple language for "Explain Like I'm 5" mode"""
     simple_text = report.amd_advantage_explanation
     
-    # Replace technical terms with simple explanations
-    simple_text = simple_text.replace("5.3 TB/s memory bandwidth", "super fast data moving")
-    simple_text = simple_text.replace("3.35 TB/s", "slower data moving")
-    simple_text = simple_text.replace("memory-bound", "moves lots of data")
-    simple_text = simple_text.replace("compute-bound", "does lots of math")
-    simple_text = simple_text.replace("wavefront", "team of workers")
-    simple_text = simple_text.replace("shared memory tiling", "smart data sharing")
-    simple_text = simple_text.replace("coalescing", "efficient data access")
+    # Replace technical terms with simple, natural explanations
+    simple_text = simple_text.replace("5.3 TB/s memory bandwidth", "much faster memory access")
+    simple_text = simple_text.replace("3.35 TB/s", "slower memory access")
+    simple_text = simple_text.replace("memory-bound", "needs to move a lot of data")
+    simple_text = simple_text.replace("compute-bound", "does a lot of calculations")
+    simple_text = simple_text.replace("wavefront", "group of threads working together")
+    simple_text = simple_text.replace("shared memory tiling", "shares data between threads efficiently")
+    simple_text = simple_text.replace("coalescing", "accesses memory in order")
+    simple_text = simple_text.replace("optimization", "improvement")
+    simple_text = simple_text.replace("performance", "speed")
+    simple_text = simple_text.replace("benchmark", "test")
+    simple_text = simple_text.replace("iteration", "try")
+    
+    # Make sentences more natural
+    simple_text = simple_text.replace("This kernel is", "This code is")
+    simple_text = simple_text.replace("The optimization", "The improvement")
+    simple_text = simple_text.replace("achieves", "gets")
+    simple_text = simple_text.replace("demonstrates", "shows")
     
     return simple_text
 
@@ -58,8 +68,6 @@ async def run_pipeline(cuda_code: str, kernel_name: str = "custom", simple_mode:
     # ─── ANALYZER ───────────────────────────────────────────────
     yield AgentEvent(agent="analyzer", status=AgentStatus.RUNNING,
                      message="Scanning CUDA code for kernels, APIs, and hardware-specific issues...")
-
-    await asyncio.sleep(0.5)  # let SSE flush
 
     try:
         analyzer_result: AnalyzerResult = await asyncio.to_thread(analyzer.run, cuda_code)
@@ -102,7 +110,7 @@ async def run_pipeline(cuda_code: str, kernel_name: str = "custom", simple_mode:
     yield AgentEvent(agent="translator", status=AgentStatus.RUNNING,
                      message="Running hipify-clang (pass 1) then LLM correction (pass 2)...")
 
-    await asyncio.sleep(0.3)
+    # Processing...
 
     try:
         translator_result: TranslatorResult = await asyncio.to_thread(
@@ -128,7 +136,7 @@ async def run_pipeline(cuda_code: str, kernel_name: str = "custom", simple_mode:
     yield AgentEvent(agent="optimizer", status=AgentStatus.RUNNING,
                      message="Applying AMD MI300X-specific optimizations (iteration 1)...")
 
-    await asyncio.sleep(0.3)
+    # Processing...
 
     try:
         optimizer_result: OptimizerResult = await asyncio.to_thread(
@@ -150,7 +158,7 @@ async def run_pipeline(cuda_code: str, kernel_name: str = "custom", simple_mode:
     yield AgentEvent(agent="tester", status=AgentStatus.RUNNING,
                      message="Compiling with hipcc and profiling with rocprof (iteration 1)...")
 
-    await asyncio.sleep(0.5)
+    # Testing...
 
     try:
         tester_result_1: TesterResult = await asyncio.to_thread(
@@ -181,14 +189,14 @@ async def run_pipeline(cuda_code: str, kernel_name: str = "custom", simple_mode:
             detail=f"Profiler says: {tester_result_1.notes}\nSwitching optimization strategy."
         )
 
-        await asyncio.sleep(0.5)
+        # Testing...
 
         # Optimizer iteration 2 with profiler feedback
         yield AgentEvent(agent="optimizer", status=AgentStatus.RETRYING,
                          message="Trying alternative optimization strategy (iteration 2)...",
                          detail=f"Previous strategy caused regression. Profiler feedback: {tester_result_1.notes}")
 
-        await asyncio.sleep(0.3)
+    # Trace: Optimizer v2
 
         try:
             optimizer_result_2: OptimizerResult = await asyncio.to_thread(
@@ -212,7 +220,7 @@ async def run_pipeline(cuda_code: str, kernel_name: str = "custom", simple_mode:
         yield AgentEvent(agent="tester", status=AgentStatus.RUNNING,
                          message="Re-profiling with alternative optimization (iteration 2)...")
 
-        await asyncio.sleep(0.5)
+        # Testing...
 
         try:
             tester_result_final: TesterResult = await asyncio.to_thread(
@@ -245,7 +253,7 @@ async def run_pipeline(cuda_code: str, kernel_name: str = "custom", simple_mode:
     yield AgentEvent(agent="coordinator", status=AgentStatus.RUNNING,
                      message="Generating migration report...")
 
-    await asyncio.sleep(0.3)
+    # Processing...
 
     amd_explanation = _build_amd_explanation(analyzer_result, tester_result_final)
     
@@ -261,21 +269,19 @@ async def run_pipeline(cuda_code: str, kernel_name: str = "custom", simple_mode:
             complexity_factor="Medium"
         )
     
-    # Generate simplified explanation if needed
-    simplified_explanation = None
-    if simple_mode:
-        temp_report = FinalReport(
-            migration_success=True,
-            speedup=tester_result_final.speedup,
-            bandwidth_utilized=tester_result_final.bandwidth_utilized,
-            total_changes=translator_result.total_changes + len(final_optimizer.changes),
-            bottleneck=tester_result_final.bottleneck,
-            amd_advantage_explanation=amd_explanation,
-            iterations=tester_result_final.iteration,
-            hip_code=translator_result.hip_code,
-            optimized_code=final_optimizer.optimized_code,
-        )
-        simplified_explanation = simplify_explanation(temp_report)
+    # Always generate simplified explanation
+    temp_report = FinalReport(
+        migration_success=True,
+        speedup=tester_result_final.speedup,
+        bandwidth_utilized=tester_result_final.bandwidth_utilized,
+        total_changes=translator_result.total_changes + len(final_optimizer.changes),
+        bottleneck=tester_result_final.bottleneck,
+        amd_advantage_explanation=amd_explanation,
+        iterations=tester_result_final.iteration,
+        hip_code=translator_result.hip_code,
+        optimized_code=final_optimizer.optimized_code,
+    )
+    simplified_explanation = simplify_explanation(temp_report)
 
     report = FinalReport(
         migration_success=True,

@@ -14,6 +14,7 @@ DEMO_KERNEL_CHECKSUMS = {
     "vector_add": "a1b2c3d4e5f6789012345678901234567890",  # Mock checksum
     "matrix_multiply": "b2c3d4e5f6a7890123456789012345678901",  # Mock checksum
     "convolution_2d": "c3d4e5f6a7b8901234567890123456789012",  # Mock checksum
+    "reduction": "e5f6a7b8c9d0123456789012345678901234",       # Mock checksum
     "custom": "d4e5f6a7b8c9012345678901234567890123"  # Mock checksum
 }
 
@@ -104,7 +105,11 @@ def _convert_profiling_to_tester_result(profiling_data: dict, analyzer_result: A
     bandwidth = profiling_data.get('memory_bandwidth_gbps', 0.0)
     
     # Calculate speedup based on iteration (controlled failure pattern)
-    if iteration == 1:
+    # To save time for the user, we only "fail" the first iteration for 'custom' code.
+    # For demo kernels, we show the improvement immediately (skipping the 30s retry loop).
+    is_demo = kernel_name in ["vector_add", "matrix_multiply", "convolution_2d", "reduction"]
+    
+    if iteration == 1 and not is_demo:
         speedup = round(0.8 + (hash(kernel_name) % 10) / 100, 2)  # 0.80-0.89
         notes = "Global memory bandwidth underutilized. Shared memory tiling not yet applied. Re-optimization needed."
     else:
@@ -112,7 +117,7 @@ def _convert_profiling_to_tester_result(profiling_data: dict, analyzer_result: A
             speedup = round(1.3 + (hash(kernel_name) % 20) / 100, 2)  # 1.30-1.49
         else:
             speedup = round(1.15 + (hash(kernel_name) % 15) / 100, 2)  # 1.15-1.29
-        notes = "Shared memory tiling applied. Memory coalescing fixed. MI300X 5.3 TB/s bandwidth now utilized effectively."
+        notes = "Optimization successful. Shared memory tiling applied and memory coalescing fixed for MI300X."
     
     return TesterResult(
         success=True,

@@ -81,7 +81,8 @@ ROCmPort AI/
 │   ├── demo_kernels/
 │   │   ├── vector_add.cu    ← Simple kernel with warp size bug
 │   │   ├── matrix_multiply.cu ← Complex kernel with controlled failure
-│   │   └── convolution_2d.cu ← Advanced kernel for optimization demo
+│   │   ├── convolution_2d.cu ← Advanced kernel for optimization demo
+│   │   └── reduction.cu      ← Classic reduction with warp size unroll bug
 │   └── prompts/
 │       ├── analyzer_prompt.txt
 │       ├── translator_prompt.txt
@@ -168,27 +169,15 @@ Three pre-tested CUDA examples included:
 1. **Vector Add** - Simple kernel demonstrating basic pipeline
 2. **Matrix Multiply** - Shows shared memory tiling optimization
 3. **2D Convolution** - Advanced memory access pattern optimization
+4. **Parallel Reduction** - Demonstrates warp-size aware unrolling (32 vs 64)
 
 All contain intentional warp size bugs to demonstrate AMD-specific fixes.
 
 ---
 
-## 🏎️ Performance Claims
-
-**Honest & Verifiable:**
-- ❌ Never claim: "Faster than NVIDIA CUDA on H100"
-- ✅ Always claim: "Optimized ROCm vs Baseline HIP (straight hipify output)"
-
-**Why AMD Wins:**
-- **Memory-bound kernels**: MI300X's 5.3 TB/s vs H100's 3.35 TB/s bandwidth
-- **Large models**: 192GB memory eliminates multi-GPU sharding
-- **Wavefront efficiency**: 64-thread wavefronts vs 32-thread warps
-
----
-
 ## 🌐 AMD Cloud Deployment
 
-On May 4, simply set:
+simply set:
 ```bash
 ROCM_AVAILABLE=true
 USE_VLLM=true
@@ -220,30 +209,11 @@ python -m pytest tests/
 
 ---
 
-## � Performance Results on AMD MI300X (Real rocprof)
-
-| Kernel | Size | Baseline HIP | Optimized ROCm | Speedup | Notes |
-|--------|------|--------------|----------------|---------|-------|
-| **Matrix Multiply** | 1024×1024 | 12.4ms | 9.5ms | **1.31x** | Shared memory tiling applied |
-| **Vector Add** | 10M elements | 3.2ms | 2.9ms | **1.10x** | Memory coalescing fixed |
-| **2D Convolution** | 256×256 | 28.7ms | 21.3ms | **1.35x** | LDS optimization applied |
-
-*See [BENCHMARKS.md](BENCHMARKS.md) for detailed methodology and statistical significance.*
-
 ---
 
 ## 🎥 Watch the 2-min Demo
 
 [ROCmPort AI on AMD MI300X](https://youtu.be/your-link)
-
----
-
-## 📢 Build in Public Updates
-
-- [x] **X Thread**: Live migration of real CUDA codebase
-- [x] **LinkedIn Post**: Technical deep dive on ROCm optimization
-- [x] **GitHub Release**: v1.0 with all 5 agents working
-- [ ] **Community Feedback**: [Submit your experience](https://github.com/yourusername/rocmport-ai/issues)
 
 ---
 
@@ -297,17 +267,9 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 ## 👤 Creator
 
 **Tazwar Ahnaf Enan**  
-AI Engineer & GPU Systems Builder  
+AI Engineer & GPU Systems Builder
 
 [![X (Twitter)](https://img.shields.io/badge/X-@TazwarEnan-1DA1F2?style=flat-square&logo=x)](https://x.com/TazwarEnan)  
 [![GitHub](https://img.shields.io/badge/GitHub-tazwaryayyyy-181717?style=flat-square&logo=github)](https://github.com/tazwaryayyyy)
 
 *Built with 🔥 for AMD Developer Hackathon 2026*
-
----
-
-## 🤝 Support
-
-- **Issues**: GitHub Issues
-- **Discussions**: GitHub Discussions  
-- **Documentation**: See `backend/prompts/` for agent system prompts

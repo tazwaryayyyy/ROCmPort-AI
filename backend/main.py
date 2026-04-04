@@ -3,6 +3,12 @@ import asyncio
 import zipfile
 import tempfile
 import os
+import difflib
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -62,8 +68,8 @@ async def port_cuda_code(req: PortRequest):
                 "detail": str(e)
             }
             yield f"data: {json.dumps(error_event)}\n\n"
-
-        yield "data: [DONE]\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -125,23 +131,15 @@ async def export_migration_package(req: dict):
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_file:
             with zipfile.ZipFile(tmp_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-                # Add diff file
-                diff_content = f"""# CUDA to ROCm Migration Diff
-
-## Original CUDA Code
-```cuda
-{original_cuda}
-```
-
-## Final ROCm Code
-```hip
-{final_rocm}
-```
-
-## Migration Summary
-{json.dumps(migration_report, indent=2)}
-"""
-                zf.writestr("migration.diff", diff_content)
+                # Add professional unified diff
+                diff = difflib.unified_diff(
+                    original_cuda.splitlines(keepends=True),
+                    final_rocm.splitlines(keepends=True),
+                    fromfile="original.cu",
+                    tofile="optimized.hip"
+                )
+                diff_text = "".join(diff)
+                zf.writestr("migration.diff", diff_text)
                 
                 # Add migration report as markdown
                 md_report = f"""# ROCmPort AI Migration Report

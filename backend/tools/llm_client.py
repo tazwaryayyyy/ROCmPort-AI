@@ -1,4 +1,9 @@
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 from typing import Optional, Dict, Any
 from groq import Groq
 from openai import OpenAI

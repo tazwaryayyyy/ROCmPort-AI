@@ -3,1550 +3,921 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ROCmPort AI — Escape CUDA Lock-In</title>
+<title>ROCmPort AI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:        #080a0e;
-    --bg2:       #0d1017;
-    --bg3:       #131820;
-    --border:    #1e2530;
-    --border2:   #2a3444;
-    --amd-red:   #e8412a;
-    --amd-red2:  #ff5540;
-    --green:     #00e676;
-    --yellow:    #ffd740;
-    --cyan:      #00e5ff;
-    --dim:       #4a5568;
-    --muted:     #6b7a8d;
-    --text:      #c8d4e0;
-    --text-bright: #e8f0f8;
-    --mono:      'JetBrains Mono', monospace;
-    --sans:      'Syne', sans-serif;
-  }
-
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--mono);
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* Grid overlay */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      linear-gradient(var(--border) 1px, transparent 1px),
-      linear-gradient(90deg, var(--border) 1px, transparent 1px);
-    background-size: 40px 40px;
-    opacity: 0.3;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  /* Scanline effect */
-  body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.03) 2px,
-      rgba(0,0,0,0.03) 4px
-    );
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .container {
-    position: relative;
-    z-index: 1;
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 24px;
-  }
-
-  /* ── HEADER ── */
-  header {
-    padding: 32px 0 24px;
-    border-bottom: 1px solid var(--border);
-    position: relative;
-  }
-
-  .header-inner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-  }
-
-  .logo-block {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
-
-  .amd-badge {
-    background: var(--amd-red);
-    color: #fff;
-    font-family: var(--sans);
-    font-weight: 800;
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    padding: 4px 8px;
-    clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 100%, 6px 100%);
-  }
-
-  .logo-text {
-    font-family: var(--sans);
-    font-weight: 800;
-    font-size: 22px;
-    color: var(--text-bright);
-    letter-spacing: -0.02em;
-  }
-
-  .logo-text span { color: var(--amd-red); }
-
-  .tagline {
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .header-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .status-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--green);
-    box-shadow: 0 0 8px var(--green);
-    animation: pulse 2s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
-
-  /* ── MAIN LAYOUT ── */
-  .main {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    padding: 28px 0;
-  }
-
-  @media (max-width: 900px) {
-    .main { grid-template-columns: 1fr; }
-  }
-
-  /* ── PANEL ── */
-  .panel {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    position: relative;
-    overflow: hidden;
-  }
-
-  .panel::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, var(--amd-red), transparent);
-  }
-
-  .panel-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .panel-title {
-    font-family: var(--sans);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
-  .panel-title span {
-    color: var(--amd-red);
-    margin-right: 6px;
-  }
-
-  /* ── CODE INPUT ── */
-  .code-area-wrap {
-    position: relative;
-  }
-
-  .code-area {
-    width: 100%;
-    background: var(--bg);
-    border: none;
-    color: var(--cyan);
-    font-family: var(--mono);
-    font-size: 12px;
-    line-height: 1.6;
-    padding: 16px;
-    resize: none;
-    height: 280px;
-    outline: none;
-    caret-color: var(--amd-red);
-  }
-
-  .code-area::placeholder { color: var(--dim); }
-
-  .demo-kernels {
-    padding: 12px 16px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .demo-label {
-    font-size: 10px;
-    color: var(--dim);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    white-space: nowrap;
-  }
-
-  .demo-btn {
-    background: var(--bg3);
-    border: 1px solid var(--border2);
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: 10px;
-    padding: 4px 10px;
-    cursor: pointer;
-    letter-spacing: 0.05em;
-    transition: all 0.15s;
-  }
-
-  .demo-btn:hover {
-    border-color: var(--amd-red);
-    color: var(--amd-red);
-  }
-
-  .demo-btn.active {
-    background: var(--amd-red);
-    border-color: var(--amd-red);
-    color: #fff;
-  }
-
-  .port-btn {
-    margin: 16px;
-    width: calc(100% - 32px);
-    padding: 14px;
-    background: var(--amd-red);
-    border: none;
-    color: #fff;
-    font-family: var(--sans);
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    cursor: pointer;
-    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 100%, 10px 100%);
-    transition: all 0.2s;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .port-btn::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: rgba(255,255,255,0.1);
-    transform: translateX(-100%);
-    transition: transform 0.3s;
-  }
-
-  .port-btn:hover::after { transform: translateX(0); }
-  .port-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  /* ── AGENT FEED ── */
-  .agent-feed {
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    min-height: 380px;
-  }
-
-  .agent-row {
-    display: grid;
-    grid-template-columns: 20px 120px 1fr auto;
-    align-items: start;
-    gap: 10px;
-    padding: 10px 12px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    transition: all 0.3s;
-    opacity: 0.4;
-  }
-
-  .agent-row.active { opacity: 1; border-color: var(--border2); }
-  .agent-row.done   { opacity: 1; border-color: #1a2a1a; }
-  .agent-row.failed { opacity: 1; border-color: #2a1a1a; }
-  .agent-row.retrying { opacity: 1; border-color: #2a2a1a; animation: borderPulse 1s ease-in-out infinite; }
-
-  @keyframes borderPulse {
-    0%, 100% { border-color: #2a2a1a; }
-    50% { border-color: var(--yellow); }
-  }
-
-  .agent-icon {
-    font-size: 13px;
-    line-height: 1.4;
-  }
-
-  .agent-name {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-    padding-top: 1px;
-  }
-
-  .agent-msg {
-    font-size: 11px;
-    color: var(--text);
-    line-height: 1.5;
-  }
-
-  .agent-detail {
-    font-size: 10px;
-    color: var(--muted);
-    margin-top: 4px;
-    white-space: pre-wrap;
-    line-height: 1.5;
-  }
-
-  .agent-detail .warn { color: var(--yellow); }
-  .agent-detail .good { color: var(--green); }
-
-  .agent-badge {
-    font-size: 9px;
-    padding: 2px 6px;
-    letter-spacing: 0.06em;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-
-  .badge-waiting  { color: var(--dim); border: 1px solid var(--border); }
-  .badge-running  { color: var(--cyan); border: 1px solid var(--cyan); animation: fadeLoop 1s ease-in-out infinite; }
-  .badge-done     { color: var(--green); border: 1px solid var(--green); }
-  .badge-failed   { color: var(--amd-red); border: 1px solid var(--amd-red); }
-  .badge-retrying { color: var(--yellow); border: 1px solid var(--yellow); }
-
-  @keyframes fadeLoop {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-
-  /* ── PERFORMANCE TIMELINE ── */
-  .timeline-panel {
-    grid-column: 1 / -1;
-    display: none;
-  }
-
-  .timeline-panel.visible { display: block; }
-
-  .timeline-inner {
-    padding: 20px;
-    display: flex;
-    gap: 24px;
-    align-items: flex-end;
-  }
-
-  .timeline-bar-wrap {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .timeline-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .tl-label {
-    font-size: 10px;
-    color: var(--muted);
-    width: 140px;
-    white-space: nowrap;
-    letter-spacing: 0.04em;
-  }
-
-  .tl-bar-bg {
-    flex: 1;
-    height: 20px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    position: relative;
-    overflow: hidden;
-  }
-
-  .tl-bar {
-    height: 100%;
-    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
-  }
-
-  .tl-bar.bad  { background: linear-gradient(90deg, #4a1a1a, var(--amd-red)); }
-  .tl-bar.good { background: linear-gradient(90deg, #1a3a1a, var(--green)); }
-
-  .tl-value {
-    font-size: 12px;
-    font-weight: 700;
-    width: 50px;
-    text-align: right;
-  }
-
-  .tl-value.bad  { color: var(--amd-red); }
-  .tl-value.good { color: var(--green); }
-
-  /* ── RESULTS PANEL ── */
-  .results-panel {
-    grid-column: 1 / -1;
-    display: none;
-  }
-
-  .results-panel.visible { display: block; }
-
-  .results-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1px;
-    background: var(--border);
-    border: 1px solid var(--border);
-  }
-
-  .result-card {
-    background: var(--bg2);
-    padding: 20px;
-  }
-
-  .result-label {
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--muted);
-    margin-bottom: 8px;
-  }
-
-  .result-value {
-    font-family: var(--sans);
-    font-size: 28px;
-    font-weight: 800;
-    color: var(--green);
-    line-height: 1;
-    margin-bottom: 4px;
-  }
-
-  .result-value.warn { color: var(--yellow); }
-  .result-value.neutral { color: var(--cyan); }
-
-  .result-sub {
-    font-size: 10px;
-    color: var(--muted);
-    line-height: 1.5;
-  }
-
-  .amd-box {
-    grid-column: 1 / -1;
-    background: linear-gradient(135deg, #0e1a10, #0a1218);
-    border: 1px solid #1a3a22;
-    padding: 20px;
-    margin: 16px;
-    position: relative;
-  }
-
-  .amd-box::before {
-    content: 'WHY AMD WINS HERE';
-    position: absolute;
-    top: -8px;
-    left: 16px;
-    background: var(--bg2);
-    font-size: 9px;
-    letter-spacing: 0.12em;
-    color: var(--green);
-    padding: 0 6px;
-    font-weight: 700;
-  }
-
-  .amd-box p {
-    font-size: 12px;
-    color: var(--text);
-    line-height: 1.7;
-  }
-
-  .amd-box .highlight { color: var(--green); font-weight: 700; }
-
-  .download-btn {
-    margin: 0 16px 16px;
-    padding: 12px 20px;
-    background: transparent;
-    border: 1px solid var(--green);
-    color: var(--green);
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .download-btn:hover {
-    background: var(--green);
-    color: var(--bg);
-  }
-
-  /* ── DIFF PANEL ── */
-  .diff-panel {
-    grid-column: 1 / -1;
-    display: none;
-  }
-
-  .diff-panel.visible { display: block; }
-
-  .diff-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .diff-col { overflow: hidden; }
-
-  .diff-col-header {
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--border);
-    font-size: 10px;
-    color: var(--muted);
-    letter-spacing: 0.06em;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .diff-col-header .lang-badge {
-    background: #2a1a1a;
-    color: var(--amd-red);
-    font-size: 9px;
-    padding: 1px 6px;
-    letter-spacing: 0.06em;
-  }
-
-  .diff-col:last-child .lang-badge {
-    background: #1a2a1a;
-    color: var(--green);
-  }
-
-  .diff-col:first-child { border-right: 1px solid var(--border); }
-
-  .diff-code {
-    padding: 12px 16px;
-    font-size: 11px;
-    line-height: 1.7;
-    overflow-x: auto;
-    white-space: pre;
-    max-height: 300px;
-    overflow-y: auto;
-    color: var(--text);
-  }
-
-  .diff-line-changed { background: rgba(0, 230, 118, 0.06); color: var(--green); }
-  .diff-line-old { background: rgba(232, 65, 42, 0.06); color: var(--amd-red); text-decoration: line-through; opacity: 0.6; }
-
-  /* ── SCROLLBAR ── */
-  ::-webkit-scrollbar { width: 4px; height: 4px; }
-  ::-webkit-scrollbar-track { background: var(--bg); }
-  ::-webkit-scrollbar-thumb { background: var(--border2); }
-
-  /* ── IDLE STATE ── */
-  .idle-msg {
-    padding: 40px 20px;
-    text-align: center;
-    color: var(--dim);
-    font-size: 11px;
-    line-height: 2;
-  }
-
-  .idle-msg .big {
-    font-family: var(--sans);
-    font-size: 14px;
-    color: var(--muted);
-    display: block;
-    margin-bottom: 8px;
-  }
-
-  /* footer */
-  footer {
-    border-top: 1px solid var(--border);
-    padding: 16px 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .footer-left { font-size: 10px; color: var(--dim); letter-spacing: 0.06em; }
-  .footer-right { font-size: 10px; color: var(--dim); }
-  .footer-right span { color: var(--amd-red); }
-</style>
-</head>
-<body>
-
-<div class="container">
-
-  <!-- HEADER -->
-  <header>
-    <div class="header-inner">
-      <div class="logo-block">
-        <div class="amd-badge">AMD</div>
-        <div>
-          <div class="logo-text">ROCmPort <span>AI</span></div>
-          <div class="tagline">Escape CUDA lock-in. Run faster on AMD.</div>
-        </div>
-      </div>
-      <div class="header-status">
-        <div class="status-dot"></div>
-        <span id="system-status">SYSTEM READY</span>
-      </div>
-    </div>
-  </header>
-
-  <!-- MAIN GRID -->
-  <div class="main">
-
-    <!-- LEFT: INPUT -->
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-title"><span>//</span> CUDA SOURCE</div>
-        <div style="font-size:10px;color:var(--dim);" id="line-count">0 lines</div>
-      </div>
-      <div class="code-area-wrap">
-        <textarea class="code-area" id="cuda-input"
-          placeholder="// Paste your CUDA code here&#10;// or select a demo kernel below&#10;&#10;__global__ void my_kernel(float* A, float* B, int N) {&#10;    int idx = blockIdx.x * blockDim.x + threadIdx.x;&#10;    ...&#10;}"></textarea>
-      </div>
-      <div class="demo-kernels">
-        <span class="demo-label">Demo:</span>
-        <button class="demo-btn" onclick="loadKernel('vector_add')">Vector Add</button>
-        <button class="demo-btn" onclick="loadKernel('matrix_multiply')">Matrix Multiply</button>
-        <button class="demo-btn" onclick="loadKernel('convolution_2d')">Conv2D</button>
-      </div>
-      <button class="port-btn" id="port-btn" onclick="startPort()">
-        ▶ PORT TO ROCM
-      </button>
-    </div>
-
-    <!-- RIGHT: AGENT FEED -->
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-title"><span>//</span> AGENT PIPELINE</div>
-        <div style="font-size:10px;color:var(--dim);" id="pipeline-timer">—</div>
-      </div>
-      <div class="agent-feed" id="agent-feed">
-        <div class="idle-msg">
-          <span class="big">Waiting for CUDA code</span>
-          Paste your code or load a demo kernel,<br>then click PORT TO ROCM
-        </div>
-      </div>
-    </div>
-
-    <!-- PERFORMANCE TIMELINE -->
-    <div class="panel timeline-panel" id="timeline-panel">
-      <div class="panel-header">
-        <div class="panel-title"><span>//</span> PERFORMANCE TIMELINE</div>
-        <div style="font-size:10px;color:var(--muted);">Optimized ROCm vs Baseline HIP (straight hipify output)</div>
-      </div>
-      <div class="timeline-inner" id="timeline-inner">
-        <!-- populated by JS -->
-      </div>
-    </div>
-
-    <!-- DIFF VIEW -->
-    <div class="panel diff-panel" id="diff-panel">
-      <div class="panel-header">
-        <div class="panel-title"><span>//</span> CODE DIFF</div>
-      </div>
-      <div class="diff-grid">
-        <div class="diff-col">
-          <div class="diff-col-header">
-            <span class="lang-badge">CUDA</span> Original Source
-          </div>
-          <pre class="diff-code" id="diff-original"></pre>
-        </div>
-        <div class="diff-col">
-          <div class="diff-col-header">
-            <span class="lang-badge">ROCm/HIP</span> Optimized Output
-          </div>
-          <pre class="diff-code" id="diff-optimized"></pre>
-        </div>
-      </div>
-    </div>
-
-    <!-- RESULTS -->
-    <div class="panel results-panel" id="results-panel">
-      <div class="panel-header">
-        <div class="panel-title"><span>//</span> MIGRATION RESULTS</div>
-        <div style="font-size:10px;color:var(--green);">✅ MIGRATION SUCCESSFUL</div>
-      </div>
-      <div class="results-grid" id="results-grid">
-        <!-- populated by JS -->
-      </div>
-      <div class="amd-box" id="amd-box" style="display:none">
-        <p id="amd-explanation"></p>
-      </div>
-      <div style="padding:16px;border-top:1px solid var(--border);display:flex;gap:12px;align-items:center;">
-        <button class="download-btn" onclick="downloadReport()">↓ DOWNLOAD MIGRATION REPORT</button>
-        <span style="font-size:10px;color:var(--dim);">This reduced months of GPU migration work to minutes.</span>
-      </div>
-    </div>
-
-  </div><!-- /main -->
-
-  <footer>
-    <div class="footer-left">ROCMPORT AI — AMD DEVELOPER HACKATHON 2025</div>
-    <div class="footer-right">POWERED BY <span>AMD MI300X</span> · ROCM · HIPIFY · VLLM</div>
-  </footer>
-
-</div><!-- /container -->
-
-<script>
-// ── STATE ──────────────────────────────────────────────────
-const API = 'http://localhost:8000';
-
-let state = {
-  cudaCode: '',
-  kernelName: 'custom',
-  running: false,
-  startTime: null,
-  timerInterval: null,
-  finalReport: null,
-  demoKernels: {}
-};
-
-const AGENT_META = {
-  analyzer:    { icon: '🔍', name: 'ANALYZER',    order: 0 },
-  translator:  { icon: '🔄', name: 'TRANSLATOR',  order: 1 },
-  optimizer:   { icon: '⚡', name: 'OPTIMIZER',   order: 2 },
-  tester:      { icon: '🧪', name: 'TESTER',      order: 3 },
-  coordinator: { icon: '📋', name: 'COORDINATOR', order: 4 },
-};
-
-// ── INIT ───────────────────────────────────────────────────
-async function init() {
-  const textarea = document.getElementById('cuda-input');
-  textarea.addEventListener('input', () => {
-    const lines = textarea.value.split('\n').length;
-    document.getElementById('line-count').textContent = `${lines} lines`;
-    state.cudaCode = textarea.value;
-  });
-
-  try {
-    const res = await fetch(`${API}/demo-kernels`);
-    state.demoKernels = await res.json();
-  } catch(e) {
-    console.log('Could not load demo kernels from API, using fallback');
-    state.demoKernels = FALLBACK_KERNELS;
-  }
+:root {
+  --bg: #030303;
+  --s1: #0a0a0b;
+  --s2: #121214;
+  --s3: #1a1a1e;
+  --b1: rgba(255, 255, 255, 0.08);
+  --b2: rgba(255, 255, 255, 0.15);
+  --red: #ff3344;
+  --red-glow: rgba(255, 51, 68, 0.4);
+  --green: #00ff88;
+  --green-glow: rgba(0, 255, 136, 0.4);
+  --yellow: #ffcc00;
+  --cyan: #00d9ff;
+  --muted: #88888e;
+  --t1: #a1a1aa;
+  --t2: #d4d4d8;
+  --t3: #ffffff;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Space Grotesk', sans-serif;
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-function loadKernel(name) {
-  document.querySelectorAll('.demo-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
+* { margin: 0; padding: 0; box-sizing: border-box; cursor: none !important; }
+.hide { display: none !important; }
 
-  const code = state.demoKernels[name] || FALLBACK_KERNELS[name] || '';
-  const textarea = document.getElementById('cuda-input');
-  textarea.value = code;
-  state.cudaCode = code;
-  state.kernelName = name;
-
-  const lines = code.split('\n').length;
-  document.getElementById('line-count').textContent = `${lines} lines`;
+body {
+  background: var(--bg);
+  color: var(--t1);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-x: hidden;
+  min-height: 100vh;
 }
 
-// ── PORT ───────────────────────────────────────────────────
-async function startPort() {
-  if (state.running) return;
-
-  const code = document.getElementById('cuda-input').value.trim();
-  if (!code) {
-    alert('Please paste CUDA code or load a demo kernel first.');
-    return;
-  }
-
-  state.cudaCode = code;
-  state.running = true;
-  state.startTime = Date.now();
-
-  // Reset UI
-  document.getElementById('port-btn').disabled = true;
-  document.getElementById('port-btn').textContent = '⟳ PORTING...';
-  document.getElementById('system-status').textContent = 'PIPELINE RUNNING';
-  document.getElementById('timeline-panel').classList.remove('visible');
-  document.getElementById('results-panel').classList.remove('visible');
-  document.getElementById('diff-panel').classList.remove('visible');
-
-  buildAgentRows();
-  startTimer();
-
-  const timelineData = [];
-
-  try {
-    const res = await fetch(`${API}/port`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cuda_code: code, kernel_name: state.kernelName })
-    });
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const raw = line.slice(6).trim();
-        if (raw === '[DONE]') { onDone(); break; }
-
-        try {
-          const event = JSON.parse(raw);
-          handleEvent(event, timelineData);
-        } catch(e) { /* ignore parse errors */ }
-      }
-    }
-  } catch(err) {
-    console.error('Pipeline error:', err);
-    document.getElementById('system-status').textContent = 'ERROR — CHECK BACKEND';
-  }
-
-  stopTimer();
-  state.running = false;
-  document.getElementById('port-btn').disabled = false;
-  document.getElementById('port-btn').textContent = '▶ PORT TO ROCM';
-}
-
-function handleEvent(event, timelineData) {
-  const { agent, status, message, detail } = event;
-
-  updateAgentRow(agent, status, message, detail);
-
-  // Collect timeline data from tester events
-  if (agent === 'tester' && (status === 'done' || status === 'failed')) {
-    const match = message.match(/([\d.]+)x/);
-    if (match) {
-      const speedup = parseFloat(match[1]);
-      const isGood = speedup >= 1.0;
-      const iterMatch = message.match(/Iteration (\d+)/i);
-      const iter = iterMatch ? iterMatch[1] : timelineData.length + 1;
-      timelineData.push({
-        label: `Iteration ${iter} (${isGood ? 'optimized' : 'baseline'})`,
-        speedup,
-        good: isGood
-      });
-      renderTimeline(timelineData);
-    }
-  }
-
-  // Final report from coordinator
-  if (agent === 'coordinator' && status === 'done' && detail) {
-    try {
-      const report = JSON.parse(detail);
-      state.finalReport = report;
-      renderResults(report);
-      renderDiff(state.cudaCode, report.optimized_code);
-    } catch(e) {}
-  }
-}
-
-function onDone() {
-  document.getElementById('system-status').textContent = 'MIGRATION COMPLETE';
-}
-
-// ── AGENT ROWS ────────────────────────────────────────────
-function buildAgentRows() {
-  const feed = document.getElementById('agent-feed');
-  feed.innerHTML = '';
-
-  Object.entries(AGENT_META).forEach(([key, meta]) => {
-    const row = document.createElement('div');
-    row.className = 'agent-row';
-    row.id = `agent-${key}`;
-    row.innerHTML = `
-      <div class="agent-icon">${meta.icon}</div>
-      <div class="agent-name">${meta.name}</div>
-      <div>
-        <div class="agent-msg" id="msg-${key}">Waiting...</div>
-        <div class="agent-detail" id="detail-${key}"></div>
-      </div>
-      <div class="agent-badge badge-waiting" id="badge-${key}">WAIT</div>
-    `;
-    feed.appendChild(row);
-  });
-}
-
-function updateAgentRow(agent, status, message, detail) {
-  const row = document.getElementById(`agent-${agent}`);
-  if (!row) return;
-
-  row.className = `agent-row ${status === 'retrying' ? 'retrying' : status === 'running' ? 'active' : status}`;
-
-  const msgEl = document.getElementById(`msg-${agent}`);
-  if (msgEl) msgEl.textContent = message;
-
-  const detailEl = document.getElementById(`detail-${agent}`);
-  if (detailEl && detail) {
-    // Highlight warnings and success markers
-    let html = escapeHtml(detail)
-      .replace(/⚠️([^\n]+)/g, '<span class="warn">⚠️$1</span>')
-      .replace(/✅([^\n]+)/g, '<span class="good">✅$1</span>');
-    detailEl.innerHTML = html;
-  }
-
-  const badge = document.getElementById(`badge-${agent}`);
-  if (badge) {
-    const labels = { waiting:'WAIT', running:'RUN', done:'DONE', failed:'FAIL', retrying:'RETRY' };
-    badge.className = `agent-badge badge-${status}`;
-    badge.textContent = labels[status] || status.toUpperCase();
-  }
-}
-
-// ── TIMELINE ─────────────────────────────────────────────
-function renderTimeline(data) {
-  const panel = document.getElementById('timeline-panel');
-  panel.classList.add('visible');
-
-  const inner = document.getElementById('timeline-inner');
-  inner.innerHTML = '';
-
-  const wrap = document.createElement('div');
-  wrap.className = 'timeline-bar-wrap';
-
-  data.forEach(d => {
-    const pct = Math.min(Math.max((d.speedup / 2.0) * 100, 5), 98);
-    const row = document.createElement('div');
-    row.className = 'timeline-row';
-    row.innerHTML = `
-      <div class="tl-label">${escapeHtml(d.label)}:</div>
-      <div class="tl-bar-bg">
-        <div class="tl-bar ${d.good ? 'good' : 'bad'}" style="width:0%" data-target="${pct}%"></div>
-      </div>
-      <div class="tl-value ${d.good ? 'good' : 'bad'}">${d.speedup}x</div>
-    `;
-    wrap.appendChild(row);
-  });
-
-  inner.appendChild(wrap);
-
-  // Animate bars in
-  requestAnimationFrame(() => {
-    document.querySelectorAll('.tl-bar').forEach(bar => {
-      const target = bar.getAttribute('data-target');
-      setTimeout(() => bar.style.width = target, 100);
-    });
-  });
-}
-
-// ── RESULTS ───────────────────────────────────────────────
-function renderResults(report) {
-  document.getElementById('results-panel').classList.add('visible');
-
-  const grid = document.getElementById('results-grid');
-  grid.innerHTML = `
-    <div class="result-card">
-      <div class="result-label">Speedup vs Baseline HIP</div>
-      <div class="result-value">${report.speedup}x</div>
-      <div class="result-sub">Optimized ROCm vs straight hipify output</div>
-    </div>
-    <div class="result-card">
-      <div class="result-label">Memory Bandwidth Utilized</div>
-      <div class="result-value neutral">${report.bandwidth_utilized && report.bandwidth_utilized.toFixed(1)}%</div>
-      <div class="result-sub">MI300X 5.3 TB/s HBM3</div>
-    </div>
-    <div class="result-card">
-      <div class="result-label">Total Changes Made</div>
-      <div class="result-value warn">${report.total_changes}</div>
-      <div class="result-sub">hipify + LLM + optimizer</div>
-    </div>
-    <div class="result-card">
-      <div class="result-label">Optimization Iterations</div>
-      <div class="result-value neutral">${report.iterations}</div>
-      <div class="result-sub">Agent retry loop</div>
-    </div>
-    <div class="result-card">
-      <div class="result-label">Bottleneck Type</div>
-      <div class="result-value" style="font-size:16px;color:var(--cyan)">${report.bottleneck && report.bottleneck.toUpperCase()}</div>
-      <div class="result-sub">Workload classification</div>
-    </div>
-    
-    <div style="text-align: center; margin: 1rem 0; padding: 0.5rem; background: #0a2e1a; border-radius: 8px;">
-        <span style="font-size: 1.25rem; font-weight: bold; color: #ffffff;">✅ This code is now <span style="color: #00ff88;">AMD-ready.</span></span>
-    </div>
-    
-    <div style="background: linear-gradient(135deg, #0a2e1a 0%, #0a1a0a 100%); border-left: 4px solid #00ff88; padding: 0.75rem 1rem; margin: 1rem 0; border-radius: 8px; display: flex; align-items: center; gap: 0.75rem;">
-        <span style="font-size: 1.5rem;">🚀</span>
-        <div>
-            <span style="font-weight: bold; color: #00ff88;">Migration Status:</span>
-            <span style="font-weight: bold; color: #ffffff; margin-left: 0.5rem;">PRODUCTION READY</span>
-            <div style="font-size: 0.75rem; color: #888; margin-top: 0.25rem;">✅ Verified compile | ✅ Checksum passed | ✅ Benchmark complete</div>
-        </div>
-    </div>
-    
-    <!-- Reality Check -->
-    <div style="background: #0a0a0a; border: 1px solid #333; border-radius: 8px; padding: 1rem; margin: 1rem 0;">
-        <div style="font-weight: bold; margin-bottom: 0.5rem;">🧪 Reality Check</div>
-        <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
-            <div>
-                <span style="color: #ff5555;">❌ Baseline (hipify only):</span>
-                <span style="color: #ff5555; font-weight: bold;"> Slower</span>
-            </div>
-            <div>
-                <span style="color: #55ff55;">✅ ROCmPort AI:</span>
-                <span style="color: #55ff55; font-weight: bold;"> Faster + Verified</span>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Plain English Summary -->
-    <div style="background: #0a1a2a; border-left: 4px solid #00aaff; padding: 0.75rem 1rem; margin: 1rem 0; border-radius: 4px;">
-        <div style="font-weight: bold; margin-bottom: 0.5rem;">🧾 What we actually did (plain English)</div>
-        <ul style="margin: 0; padding-left: 1.25rem; color: #ccc;">
-            <li>Fixed thread mismatch that would break results</li>
-            <li>Reduced unnecessary memory movement</li>
-            <li>Tuned execution for AMD GPU architecture</li>
-        </ul>
-    </div>
-    
-    <!-- Time Saved Visual -->
-    <div style="margin: 1rem 0;">
-        <div style="font-weight: bold; margin-bottom: 0.5rem;">⏱️ Time Comparison</div>
-        <div style="background: #333; border-radius: 8px; padding: 0.5rem;">
-            <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
-                <span style="width: 100px;">Manual:</span>
-                <div style="flex: 1; background: #ff5555; height: 24px; border-radius: 4px; width: 90%;"></div>
-                <span style="margin-left: 8px;">4–8 weeks</span>
-            </div>
-            <div style="display: flex; align-items: center;">
-                <span style="width: 100px;">ROCmPort AI:</span>
-                <div style="flex: 1; background: #55ff55; height: 24px; border-radius: 4px; width: 5%;"></div>
-                <span style="margin-left: 8px;">5 minutes</span>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Confidence Meter -->
-    <div style="margin: 1rem 0;">
-        <div style="font-weight: bold;">🧠 Migration Confidence</div>
-        <div style="background: #333; border-radius: 8px; height: 20px; width: 100%; margin-top: 4px;">
-            <div style="background: linear-gradient(90deg, #00ff88, #00aaff); width: 94%; height: 100%; border-radius: 8px; text-align: right; padding-right: 4px; color: white; line-height: 20px;">94%</div>
-        </div>
-    </div>
-    
-    <!-- Verification Panel (Feature 1) -->
-    <div class="result-card">
-      <div class="result-label">🔍 Verification Status</div>
-      <div class="result-value" id="verification-status">
-        ${report.verification ? 
-          (report.verification.mock_mode ? '⚠️ Mock mode<br>' : '') +
-          (report.verification.compiled_successfully ? '✅ ' : '❌ ') + 'Compiled' + '<br>' +
-          (report.verification.executed_without_error ? '✅ ' : '❌ ') + 'Executed' + '<br>' +
-          (report.verification.output_matches_expected ? '✅ ' : '❌ ') + 'Output Verified'
-          : '⏳ Pending'
-        }
-      </div>
-      <div class="result-sub">Checksum verification of demo kernel output ${report.verification && report.verification.mock_mode ? '(simulated)' : ''}</div>
-    </div>
-    
-    <!-- Cost Impact Estimator (Feature 4) -->
-    <div class="result-card">
-      <div class="result-label">💰 Estimated Impact</div>
-      <div class="result-value" style="font-size:14px;">
-        ${report.cost_estimate ? 
-          'Manual: ' + report.cost_estimate.manual_porting_weeks + '<br>' +
-          'ROCmPort: ' + report.cost_estimate.rocmport_minutes + '<br>' +
-          'Savings: ' + report.cost_estimate.estimated_savings
-          : 'Calculating...'
-        }
-      </div>
-      <div class="result-sub">Based on code complexity: ${report.cost_estimate && report.cost_estimate.complexity_factor ? report.cost_estimate.complexity_factor : 'Medium'}</div>
-    </div>
-    
-    <!-- Edit Button (Feature 2) -->
-    <div class="result-card">
-      <div class="result-label">✏️ Actions</div>
-      <div class="result-value">
-        <button onclick="openEditModal()" style="
-          background: var(--amd-red);
-          color: white;
-          border: none;
-          padding: 8px 16px;
-          border-radius: 4px;
-          cursor: pointer;
-          font-family: var(--mono);
-          font-size: 12px;
-          margin: 4px;
-        ">Edit Optimized Code</button>
-        <button onclick="exportMigration()" style="
-          background: var(--green);
-          color: white;
-          border: none;
-          padding: 8px 16px;
-          border-radius: 4px;
-          cursor: pointer;
-          font-family: var(--mono);
-          font-size: 12px;
-          margin: 4px;
-        ">🚀 Create GitHub PR</button>
-      </div>
-      <div class="result-sub">Human override & export options</div>
-    </div>
-    
-    <!-- Simple Mode Toggle (Feature 6) -->
-    <div class="result-card">
-      <div class="result-label">🧠 Explanation Mode</div>
-      <div class="result-value">
-        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-          <input type="checkbox" id="simple-mode" onchange="toggleSimpleMode()" style="margin: 0;">
-          <span>Explain Like I'm 5</span>
-        </label>
-      </div>
-      <div class="result-sub">Toggle simple language explanations</div>
-    </div>
-  `;
-
-  if (report.amd_advantage_explanation) {
-    const box = document.getElementById('amd-box');
-    box.style.display = 'block';
-    const p = document.getElementById('amd-explanation');
-    p.innerHTML = report.amd_advantage_explanation
-      .replace(/5\.3 TB\/s/g, '<span class="highlight">5.3 TB/s</span>')
-      .replace(/192GB?/g, '<span class="highlight">192GB</span>')
-      .replace(/MI300X/g, '<span class="highlight">MI300X</span>');
-  }
-}
-
-// ── DIFF ──────────────────────────────────────────────────
-function renderDiff(original, optimized) {
-  if (!original || !optimized) return;
-  document.getElementById('diff-panel').classList.add('visible');
-
-  const origLines = original.split('\n');
-  const optLines  = optimized.split('\n');
-
-  const origEl = document.getElementById('diff-original');
-  const optEl  = document.getElementById('diff-optimized');
-
-  const maxLen = Math.max(origLines.length, optLines.length);
-  let origHtml = '', optHtml = '';
-
-  for (let i = 0; i < maxLen; i++) {
-    const o = origLines[i] ?? '';
-    const n = optLines[i]  ?? '';
-    const changed = o !== n;
-
-    origHtml += `<span class="${changed ? 'diff-line-old' : ''}">${escapeHtml(o)}\n</span>`;
-    optHtml  += `<span class="${changed ? 'diff-line-changed' : ''}">${escapeHtml(n)}\n</span>`;
-  }
-
-  origEl.innerHTML = origHtml;
-  optEl.innerHTML  = optHtml;
-}
-
-// ── TIMER ─────────────────────────────────────────────────
-function startTimer() {
-  state.timerInterval = setInterval(() => {
-    const s = ((Date.now() - state.startTime) / 1000).toFixed(1);
-    document.getElementById('pipeline-timer').textContent = `${s}s`;
-  }, 100);
-}
-
-function stopTimer() {
-  clearInterval(state.timerInterval);
-}
-
-// ── DOWNLOAD ──────────────────────────────────────────────
-function downloadReport() {
-  const r = state.finalReport;
-  if (!r) return;
-
-  const md = `# ROCmPort AI — Migration Report
-
-## Results
-- **Speedup**: ${r.speedup}x faster than baseline HIP
-- **Memory Bandwidth**: ${r.bandwidth_utilized && r.bandwidth_utilized.toFixed(1)}% utilized
-- **Total Changes**: ${r.total_changes}
-- **Bottleneck**: ${r.bottleneck}
-- **Iterations**: ${r.iterations}
-
-## AMD Hardware Advantage
-${r.amd_advantage_explanation}
-
-## Comparison Note
-Results compare **Optimized ROCm** (this tool's output) vs **Baseline HIP** (straight hipify-clang output).
-
-## ROCm/HIP Code
-\`\`\`cpp
-${r.optimized_code || ''}
-\`\`\`
-
----
-*Generated by ROCmPort AI — AMD Developer Hackathon 2025*
-`;
-
-  const blob = new Blob([md], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'rocmport-migration-report.md';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// ── UTILS ─────────────────────────────────────────────────
-function escapeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-// ── FALLBACK KERNELS (if API not available) ───────────────
-const FALLBACK_KERNELS = {
-  vector_add: `#include <cuda_runtime.h>
-
-__global__ void vector_add_kernel(float* A, float* B, float* C, int N) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < N) {
-        C[idx] = A[idx] + B[idx];
-    }
-}
-
-int main() {
-    int N = 1 << 24;
-    size_t size = N * sizeof(float);
-    float *d_A, *d_B, *d_C;
-    cudaMalloc(&d_A, size);
-    cudaMalloc(&d_B, size);
-    cudaMalloc(&d_C, size);
-    int threads = 128;
-    int blocks = (N + threads - 1) / threads;
-    vector_add_kernel<<<blocks, threads>>>(d_A, d_B, d_C, N);
-    cudaDeviceSynchronize();
-    cudaFree(d_A); cudaFree(d_B); cudaFree(d_C);
-    return 0;
-}`,
-  matrix_multiply: `#include <cuda_runtime.h>
-#define WARP_SIZE 32
-
-__global__ void matmul_kernel(float* A, float* B, float* C, int N) {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-    float sum = 0.0f;
-    if (row < N && col < N) {
-        for (int k = 0; k < N; k++)
-            sum += A[row * N + k] * B[k * N + col];
-        C[row * N + col] = sum;
-    }
-}
-
-// Warp-level reduction: hardcoded WARP_SIZE=32 (will break on AMD wavefront=64)
-__global__ void warp_reduce(float* data, float* result, int N) {
-    int tid = threadIdx.x;
-    extern __shared__ float sdata[];
-    sdata[tid] = (tid < N) ? data[tid] : 0;
-    __syncthreads();
-    for (int s = WARP_SIZE/2; s > 0; s >>= 1) {
-        if (tid < s) sdata[tid] += sdata[tid + s];
-        __syncthreads();
-    }
-    if (tid == 0) result[blockIdx.x] = sdata[0];
-}
-
-int main() {
-    int N = 1024;
-    size_t size = N * N * sizeof(float);
-    float *d_A, *d_B, *d_C;
-    cudaMalloc(&d_A, size);
-    cudaMalloc(&d_B, size);
-    cudaMalloc(&d_C, size);
-    dim3 block(16, 16);
-    dim3 grid((N+15)/16, (N+15)/16);
-    matmul_kernel<<<grid, block>>>(d_A, d_B, d_C, N);
-    cudaDeviceSynchronize();
-    cudaFree(d_A); cudaFree(d_B); cudaFree(d_C);
-    return 0;
-}`,
-  convolution_2d: `#include <cuda_runtime.h>
-#define BLOCK_SIZE 16
-
-__global__ void conv2d_kernel(
-    float* input, float* kernel, float* output,
-    int width, int height
-) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= width || y >= height) return;
-    float sum = 0.0f;
-    for (int ky = -1; ky <= 1; ky++) {
-        for (int kx = -1; kx <= 1; kx++) {
-            int ix = x + kx, iy = y + ky;
-            if (ix >= 0 && ix < width && iy >= 0 && iy < height)
-                sum += input[iy * width + ix] * kernel[(ky+1)*3 + (kx+1)];
-        }
-    }
-    output[y * width + x] = sum;
-}
-
-int main() {
-    int W = 2048, H = 2048;
-    float *d_in, *d_ker, *d_out;
-    cudaMalloc(&d_in,  W*H*sizeof(float));
-    cudaMalloc(&d_ker, 9*sizeof(float));
-    cudaMalloc(&d_out, W*H*sizeof(float));
-    dim3 block(BLOCK_SIZE, BLOCK_SIZE);
-    dim3 grid((W+BLOCK_SIZE-1)/BLOCK_SIZE, (H+BLOCK_SIZE-1)/BLOCK_SIZE);
-    conv2d_kernel<<<grid, block>>>(d_in, d_ker, d_out, W, H);
-    cudaDeviceSynchronize();
-    cudaFree(d_in); cudaFree(d_ker); cudaFree(d_out);
-    return 0;
-}`
-};
-
-</script>
-
-<!-- Edit Modal (Feature 2) -->
-<div id="edit-modal" class="modal" style="display:none;">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3>✏️ Edit Optimized ROCm Code</h3>
-      <button onclick="closeEditModal()" style="background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;">×</button>
-    </div>
-    <div class="modal-body">
-      <textarea id="edited-code" style="
-        width: 100%;
-        height: 400px;
-        background: var(--bg2);
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        padding: 12px;
-        font-family: var(--mono);
-        font-size: 13px;
-        resize: vertical;
-      "></textarea>
-    </div>
-    <div class="modal-footer">
-      <button onclick="recompileEditedCode()" style="
-        background: var(--amd-red);
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-family: var(--mono);
-        font-size: 14px;
-      ">🔄 Re-test</button>
-      <button onclick="closeEditModal()" style="
-        background: var(--muted);
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-family: var(--mono);
-        font-size: 14px;
-      ">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<style>
-.modal {
+/* Animated Gradient Background */
+body::before {
+  content: '';
   position: fixed;
-  top: 0;
-  left: 0;
+  inset: 0;
+  background: 
+    radial-gradient(circle at 20% 30%, rgba(0, 217, 255, 0.05), transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(255, 51, 68, 0.05), transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(0, 255, 136, 0.03), transparent 60%);
+  z-index: -1;
+  animation: bgMove 20s ease-in-out infinite alternate;
+}
+
+@keyframes bgMove {
+  0% { transform: scale(1) translate(0, 0); }
+  50% { transform: scale(1.1) translate(20px, -20px); }
+  100% { transform: scale(1) translate(-20px, 20px); }
+}
+
+.w {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  position: relative;
+}
+
+/* Container Glow */
+.w::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(255, 51, 68, 0.08), transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+header {
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--b1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.logo {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--t3);
+  letter-spacing: -0.02em;
+}
+
+.logo em {
+  font-style: normal;
+  color: var(--red);
+  text-shadow: 0 0 15px var(--red-glow);
+}
+
+.hr {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--s1);
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--b1);
+}
+
+.hd {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 10px var(--green-glow);
+}
+
+.hd.on { animation: pulse 2s ease-in-out infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+.g {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 24px;
+  padding: 0;
+}
+
+.fs { grid-column: 1 / -1; }
+
+@media (max-width: 900px) {
+  .g { grid-template-columns: 1fr; }
+}
+
+/* Card Styling */
+.p {
+  background: var(--s1);
+  border: 1px solid var(--b1);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  transition: transform 0.3s var(--spring), border-color 0.3s ease;
+}
+
+.p:hover {
+  border-color: var(--b2);
+}
+
+.ph {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--b1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ph b { color: var(--red); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+
+textarea.code {
   width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.8);
+  flex: 1;
+  min-height: 300px;
+  background: var(--bg);
+  border: none;
+  color: var(--t2);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 20px;
+  resize: vertical;
+  outline: none;
+  caret-color: var(--red);
+  will-change: transform;
+}
+
+.db {
+  padding: 12px 16px;
+  border-top: 1px solid var(--b1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--s1);
+}
+
+.db .l { font-size: 11px; color: var(--muted); font-weight: 500; }
+
+.ch {
+  font-family: var(--sans);
+  font-size: 11px;
+  padding: 4px 12px;
+  background: var(--s2);
+  border: 1px solid var(--b1);
+  border-radius: 6px;
+  color: var(--t1);
+  cursor: pointer;
+  transition: all 0.2s var(--spring);
+}
+
+.ch:hover {
+  background: var(--s3);
+  color: var(--t3);
+  transform: translateY(-1px);
+  border-color: var(--b2);
+}
+
+.ch.on {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+  box-shadow: 0 0 15px var(--red-glow);
+}
+
+.bg {
+  margin: 16px;
+  padding: 14px;
+  background: var(--red);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s var(--spring);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 4px 15px var(--red-glow);
+}
+
+.bg:hover {
+  background: #ff4d5a;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px var(--red-glow);
+}
+
+.bg:active { transform: translateY(0); }
+
+.bg:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Agent log */
+.al { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+
+.ar {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+  transition: all 0.4s var(--spring);
+  animation: slideIn 0.5s var(--spring) forwards;
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+@keyframes slideIn {
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.ar.run { border-color: var(--cyan); background: rgba(0, 217, 255, 0.05); }
+.ar.done { border-color: var(--green); background: rgba(0, 255, 136, 0.05); }
+.ar.fail { border-color: var(--red); background: rgba(255, 51, 68, 0.05); }
+.ar.retry {
+  border-color: var(--yellow);
+  background: rgba(255, 204, 0, 0.05);
+  animation: pulse-border 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  50% { border-color: rgba(255, 204, 0, 0.2); }
+}
+
+.at { display: flex; align-items: center; gap: 12px; }
+.an { font-size: 10px; font-weight: 700; color: var(--muted); min-width: 90px; text-transform: uppercase; letter-spacing: 0.1em; }
+.am { font-size: 13px; color: var(--t2); font-weight: 500; }
+.ad { font-size: 11px; color: var(--muted); margin-top: 4px; padding-left: 102px; white-space: pre-wrap; line-height: 1.6; max-height: 100px; overflow-y: auto; }
+.ad .w { color: var(--yellow); font-weight: 600; }
+.ad .g { color: var(--green); font-weight: 600; }
+
+/* Horizontal Timeline */
+.timeline {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--b1);
+  margin-bottom: 8px;
+}
+
+.node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  flex: 1;
+}
+
+.node::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--b1);
+  z-index: 0;
+}
+
+.node:last-child::after { display: none; }
+
+.ni {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--s3);
+  border: 2px solid var(--b1);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  font-size: 12px;
+  z-index: 1;
+  transition: all 0.4s var(--spring);
 }
 
-.modal-content {
-  background: var(--bg2);
-  border: 2px solid var(--border);
+.node.on .ni { background: var(--cyan); border-color: var(--cyan); color: #000; box-shadow: 0 0 15px var(--cyan); }
+.node.done .ni { background: var(--green); border-color: var(--green); color: #000; box-shadow: 0 0 15px var(--green); }
+.node.fail .ni { background: var(--red); border-color: var(--red); color: #fff; }
+.node.retry .ni { animation: pulse-node 1s var(--spring) infinite; background: var(--yellow); border-color: var(--yellow); }
+
+@keyframes pulse-node {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+
+.nl { font-size: 9px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.node.on .nl, .node.done .nl { color: var(--t3); }
+
+/* Tabs */
+.tabs { display: flex; gap: 8px; }
+.tab {
+  background: var(--s2);
+  border: 1px solid var(--b1);
+  padding: 6px 16px;
   border-radius: 8px;
-  width: 90%;
-  max-width: 800px;
-  max-height: 90vh;
-  overflow-y: auto;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s var(--spring);
 }
 
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px;
-  border-bottom: 1px solid var(--border);
+.tab:hover { color: var(--t2); background: var(--s3); }
+.tab.on { color: var(--t3); background: var(--red); border-color: var(--red); box-shadow: 0 0 10px var(--red-glow); }
+
+.tc { display: none; padding: 0; animation: fadeIn 0.4s ease; }
+.tc.on { display: block; }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Summary row */
+.sum-row { padding: 24px; display: flex; align-items: center; gap: 32px; flex-wrap: wrap; border-bottom: 1px solid var(--b1); background: rgba(0, 255, 136, 0.02); }
+.sum-big { font-size: 32px; font-weight: 800; color: var(--green); line-height: 1; letter-spacing: -0.02em; text-shadow: 0 0 20px var(--green-glow); }
+.sum-big .u { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 4px; display: block; margin-top: 4px; letter-spacing: 0; }
+.sum-big .vic { font-size: 11px; color: var(--cyan); font-weight: 600; display: block; margin-top: 8px; text-shadow: none; opacity: 0.8; }
+.sum-sep { width: 1px; height: 40px; background: var(--b1); }
+.sum-chk { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--t2); font-weight: 500; }
+.sum-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sum-dot.ok { background: var(--green); box-shadow: 0 0 8px var(--green-glow); }
+.sum-dot.no { background: var(--red); box-shadow: 0 0 8px var(--red-glow); }
+.sum-type { font-size: 11px; color: var(--cyan); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; padding: 4px 10px; background: rgba(0, 217, 255, 0.1); border-radius: 4px; }
+
+.sum-bar { padding: 16px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid var(--b1); }
+.bs {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--b1);
+  background: var(--s2);
+  color: var(--t2);
+  cursor: pointer;
+  transition: all 0.2s var(--spring);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.modal-header h3 {
-  margin: 0;
-  color: var(--text);
+.bs:hover { border-color: var(--b2); transform: translateY(-1px); background: var(--s3); }
+.bs.r { background: var(--bg); border-color: var(--red); color: var(--red); }
+.bs.r:hover { background: var(--red); color: #fff; box-shadow: 0 4px 15px var(--red-glow); }
+.bs.gr { background: var(--green); border-color: var(--green); color: #000; }
+.bs.gr:hover { box-shadow: 0 4px 15px var(--green-glow); transform: translateY(-2px); }
+.sp { flex: 1; }
+
+/* Details tab */
+.dm { display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid var(--b1); }
+@media (max-width: 800px) { .dm { grid-template-columns: repeat(2, 1fr); } }
+.di { padding: 20px; border-right: 1px solid var(--b1); background: rgba(255, 255, 255, 0.01); }
+.di:last-child { border-right: none; }
+.dl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; font-weight: 700; }
+.dv { font-size: 20px; font-weight: 800; line-height: 1; margin-bottom: 4px; color: var(--t3); }
+.dv.g { color: var(--green); }
+.dv.c { color: var(--cyan); }
+.dv.y { color: var(--yellow); }
+.dv.t { color: var(--t2); font-size: 13px; }
+.ds { font-size: 10px; color: var(--muted); line-height: 1.4; }
+
+/* Benchmark bars */
+.bk { padding: 24px; border-bottom: 1px solid var(--b1); }
+.bk-t { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 16px; font-weight: 700; }
+.br { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+.br:last-child { margin-bottom: 0; }
+.bl { font-size: 12px; color: var(--t2); width: 140px; flex-shrink: 0; font-weight: 500; }
+.bt { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; border: 1px solid var(--b1); }
+.bf { height: 100%; border-radius: 4px; transition: width 1s var(--spring); width: 0; }
+.bf.bad { background: linear-gradient(90deg, #ff334466, #ff3344); box-shadow: 0 0 10px rgba(255, 51, 68, 0.3); }
+.bf.good { background: linear-gradient(90deg, #00ff8866, #00ff88); box-shadow: 0 0 10px rgba(0, 255, 136, 0.3); }
+.bv { font-size: 12px; font-weight: 700; width: 40px; text-align: right; flex-shrink: 0; }
+.bv.bad { color: var(--red); }
+.bv.good { color: var(--green); }
+
+/* Simple mode note */
+.sn { padding: 20px; border: 1px solid var(--cyan); border-radius: 12px; background: rgba(0, 217, 255, 0.05); margin: 24px; font-size: 13px; color: var(--t2); line-height: 1.6; border-left-width: 4px; }
+
+/* Diff */
+.dg { display: grid; grid-template-columns: 1fr 1fr; background: var(--bg); }
+@media (max-width: 780px) { .dg { grid-template-columns: 1fr; } .dfs:first-child { border-right: none !important; border-bottom: 1px solid var(--b1); } }
+.dfs:first-child { border-right: 1px solid var(--b1); }
+.dfh { padding: 10px 16px; border-bottom: 1px solid var(--b1); font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; font-weight: 600; background: var(--s2); }
+.dft { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+.dft.cu { background: rgba(255, 51, 68, 0.2); color: var(--red); }
+.dft.ro { background: rgba(0, 255, 136, 0.2); color: var(--green); }
+.dfp { padding: 20px; font-family: var(--mono); font-size: 12px; line-height: 1.7; overflow: auto; max-height: 500px; white-space: pre; color: var(--t2); }
+.dlo { background: rgba(255, 51, 68, 0.1); color: var(--red); text-decoration: line-through; display: block; width: 100%; }
+.dln { background: rgba(0, 255, 136, 0.1); color: var(--green); display: block; width: 100%; }
+
+/* Loading Skeleton */
+.skeleton { position: relative; overflow: hidden; background: var(--s2); border-radius: 12px; height: 200px; margin-top: 24px; }
+.skeleton::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent); animation: shimmer 1.5s infinite; }
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+
+/* Custom Cursor */
+#cursor {
+  position: fixed;
+  width: 20px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  transition: transform 0.1s ease, width 0.3s var(--spring), height 0.3s var(--spring), background 0.3s ease;
+  mix-blend-mode: difference;
 }
 
-.modal-body {
-  padding: 20px;
-}
+#cursor.active { transform: scale(3); background: rgba(255, 51, 68, 0.3); border-color: var(--red); }
 
-.modal-footer {
-  padding: 20px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-}
+/* Modal */
+.mo { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); z-index: 1000; place-items: center; backdrop-filter: blur(8px); }
+.mo.open { display: grid; }
+.mb { background: var(--s1); border: 1px solid var(--b1); border-radius: 16px; width: 90%; max-width: 800px; max-height: 90vh; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); }
+.mt { padding: 16px 24px; border-bottom: 1px solid var(--b1); display: flex; justify-content: space-between; align-items: center; background: var(--s2); }
+.mt h3 { font-size: 16px; color: var(--t3); font-weight: 700; }
+.mx { background: none; border: none; color: var(--muted); font-size: 24px; cursor: pointer !important; line-height: 1; transition: color 0.2s; }
+.mx:hover { color: var(--t3); }
+.mc { padding: 24px; }
+.mc textarea { width: 100%; height: 400px; background: var(--bg); border: 1px solid var(--b1); border-radius: 8px; padding: 16px; color: var(--cyan); font-family: var(--mono); font-size: 12px; line-height: 1.6; resize: vertical; outline: none; }
+.mc textarea:focus { border-color: var(--cyan); box-shadow: 0 0 10px rgba(0, 217, 255, 0.2); }
+.mf { padding: 16px 24px; border-top: 1px solid var(--b1); display: flex; justify-content: flex-end; gap: 12px; background: var(--s2); }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--b1); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--b2); }
+
+footer { padding: 32px 0; border-top: 1px solid var(--b1); display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-weight: 500; }
+footer a { color: var(--muted); text-decoration: none; transition: color 0.2s; border-bottom: 1px solid transparent; }
+footer a:hover { color: var(--t2); border-bottom-color: var(--muted); }
+
+.idle { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--b2); font-size: 13px; font-weight: 500; min-height: 100px; }
 </style>
+</head>
+<div id="cursor"></div>
 
+<div class="w">
+  <header>
+    <div class="logo">ROCmPort <em>AI</em></div>
+    <div class="hr">
+      <div class="hd on" id="hdot"></div>
+      <span id="hstat">⚡ Armed and waiting</span>
+    </div>
+  </header>
+
+  <div class="g">
+    <div class="p">
+      <div class="ph"><div><b>//</b> CUDA source</div><div id="lc">0 lines</div></div>
+      <textarea class="code" id="inp" spellcheck="false" placeholder="// Paste CUDA code here
+// or pick a demo below
+
+__global__ void kernel(float* A, float* B, int N) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    ...
+}"></textarea>
+      <div class="db">
+        <span class="l">Select a template:</span>
+        <button class="ch" onclick="lk('vector_add', this)">Vector addition</button>
+        <button class="ch" onclick="lk('matrix_multiply', this)">Matrix multiplication</button>
+        <button class="ch" onclick="lk('convolution_2d', this)">2D convolution</button>
+        <button class="ch" onclick="lk('reduction', this)">Parallel reduction</button>
+      </div>
+      <button class="bg" id="go" onclick="go()">Port to ROCm</button>
+    </div>
+
+    <div class="p">
+      <div class="ph"><div><b>//</b> Pipeline</div><div id="pt">0.0s</div></div>
+      <div class="timeline" id="tl">
+        <!-- Nodes injected by JS -->
+      </div>
+      <div class="al" id="al">
+        <div class="idle">Paste CUDA code to begin migration</div>
+      </div>
+    </div>
+
+    <div class="p fs hide" id="rp">
+      <div class="ph">
+        <div style="display:flex;align-items:center;gap:12px"><b>//</b> Results</div>
+        <div class="tabs" id="tabs">
+          <button class="tab on" onclick="stab('sum',this)">Summary</button>
+          <button class="tab" onclick="stab('diff',this)">Visual Diff</button>
+          <button class="tab" onclick="stab('det',this)">Performance</button>
+        </div>
+      </div>
+      <div id="t-loader" class="hide">
+        <div class="skeleton"></div>
+      </div>
+      <div id="t-sum" class="tc on"></div>
+      <div id="t-diff" class="tc"></div>
+      <div id="t-det" class="tc">
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div>ROCmPort AI — AMD Developer Hackathon 2025</div>
+    <div><a href="https://x.com/TazwarEnan" target="_blank">Tazwar Ahnaf Enan</a> · <a href="https://github.com/tazwaryayyyy" target="_blank">GitHub</a></div>
+  </footer>
+</div>
+
+<div class="mo" id="modal">
+  <div class="mb">
+    <div class="mt"><h3>Edit ROCm code</h3><button class="mx" onclick="cm()">&times;</button></div>
+    <div class="mc"><textarea id="edt"></textarea></div>
+    <div class="mf"><button class="bs" onclick="cm()">Cancel</button><button class="bs r" onclick="rec()">Re-test</button></div>
+  </div>
+</div>
 <script>
-// Additional functions for new features
-function openEditModal() {
-  const modal = document.getElementById('edit-modal');
-  const textarea = document.getElementById('edited-code');
-  textarea.value = state.finalReport?.optimized_code || '';
-  modal.style.display = 'flex';
-}
+const API = 'http://localhost:8000';
+const S = { code: '', kn: 'custom', run: false, t0: null, iv: null, rep: null, tl: [], kernels: {} };
+const AG = {
+  analyzer: { n: 'ANALYZER', i: '🔍' },
+  translator: { n: 'TRANSLATOR', i: '🔄' },
+  optimizer: { n: 'OPTIMIZER', i: '⚡' },
+  tester: { n: 'TESTER', i: '🧪' },
+  coordinator: { n: 'COORDINATOR', i: '📋' }
+};
 
-function closeEditModal() {
-  document.getElementById('edit-modal').style.display = 'none';
-}
-
-async function recompileEditedCode() {
-  const editedCode = document.getElementById('edited-code').value;
-  if (!editedCode.trim()) {
-    alert('Please enter some code to test');
-    return;
+// Custom Cursor Logic
+const cur = document.getElementById('cursor');
+document.addEventListener('mousemove', (e) => {
+  cur.style.left = e.clientX + 'px';
+  cur.style.top = e.clientY + 'px';
+  const target = e.target;
+  const isClickable = target.onclick || 
+                     target.tagName === 'BUTTON' || 
+                     target.tagName === 'A' || 
+                     target.tagName === 'TEXTAREA' ||
+                     target.classList.contains('ch') ||
+                     target.classList.contains('tab');
+  
+  if (isClickable) {
+    cur.classList.add('active');
+    if (target.id === 'go') cur.style.background = 'rgba(255, 51, 68, 0.5)';
+    else cur.style.background = 'rgba(255, 255, 255, 0.3)';
+  } else {
+    cur.classList.remove('active');
+    cur.style.background = 'rgba(255, 255, 255, 0.2)';
   }
+});
+
+async function init() {
+  const ta = document.getElementById('inp');
+  ta.oninput = () => {
+    document.getElementById('lc').textContent = ta.value.split('\n').length + ' lines';
+    S.code = ta.value;
+  };
+  try {
+    const r = await fetch(API + '/demo-kernels');
+    S.kernels = await r.json();
+  } catch (e) { S.kernels = FB; }
+}
+
+function lk(n, btn) {
+  document.querySelectorAll('.ch').forEach(c => c.classList.remove('on'));
+  btn.classList.add('on');
+  const code = S.kernels[n] || FB[n] || '', ta = document.getElementById('inp');
+  ta.value = code; S.code = code; S.kn = n;
+  document.getElementById('lc').textContent = code.split('\n').length + ' lines';
+}
+
+function stab(id, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  document.querySelectorAll('.tc').forEach(t => t.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('t-' + id).classList.add('on');
+  if (id === 'diff' && S.rep) rDiff(S.code, S.rep.optimized_code);
+}
+
+async function go() {
+  if (S.run) return;
+  const code = document.getElementById('inp').value.trim();
+  if (!code) return;
+  
+  S.code = code; S.run = true; S.t0 = Date.now(); S.tl = [];
+  const btn = document.getElementById('go');
+  btn.disabled = true;
+  btn.textContent = 'Awaiting Agents...';
+  
+  document.getElementById('hstat').textContent = '🤖 Agents thinking...';
+  document.getElementById('rp').classList.add('hide');
+  
+  bLog();
+  sTimer();
   
   try {
-    const response = await fetch('/recompile', {
+    const simpleModeCheckbox = document.getElementById('sm');
+    const res = await fetch(API + '/port', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        edited_code: editedCode,
-        kernel_name: state.kernelName || 'custom'
+        cuda_code: code,
+        kernel_name: S.kn,
+        simple_mode: simpleModeCheckbox ? simpleModeCheckbox.checked : false
       })
     });
     
-    const result = await response.json();
-    if (result.success) {
-      closeEditModal();
-      // Update results with new tester data
-      renderResults(result.result);
-      // Show success message
-      alert('Code recompiled and tested successfully!');
-    } else {
-      alert('Recompilation failed: ' + (result.detail || 'Unknown error'));
+    // Show results panel with loader immediately
+    document.getElementById('rp').classList.remove('hide');
+    document.getElementById('t-loader').classList.remove('hide');
+    document.getElementById('t-sum').classList.remove('on');
+    document.getElementById('t-diff').classList.remove('on');
+    document.getElementById('t-det').classList.remove('on');
+
+    const rd = res.body.getReader(), dc = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await rd.read();
+      if (done) break;
+      buf += dc.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const ln of lines) {
+        if (!ln.startsWith('data: ')) continue;
+        const raw = ln.slice(6).trim();
+        if (raw === '[DONE]') { done_(); break; }
+        try { hEvt(JSON.parse(raw)); } catch (e) { console.error('Parse error:', e); }
+      }
     }
-  } catch (error) {
-    alert('Recompilation error: ' + error.message);
+  } catch (e) {
+    document.getElementById('hstat').textContent = '⚠️ Agent failure';
+    document.getElementById('t-loader').classList.add('hide'); // Hide loader on error
+    console.error(e);
+  } finally {
+    xTimer();
+    S.run = false;
+    btn.disabled = false;
+    btn.textContent = 'Port to ROCm';
+    document.getElementById('t-loader').classList.add('hide');
   }
 }
 
-async function exportMigration() {
-  if (!state.finalReport) {
-    alert('No migration report available to export');
-    return;
+function hEvt(ev) {
+  uLog(ev.agent, ev.status, ev.message, ev.detail);
+  if (ev.agent === 'tester' && (ev.status === 'done' || ev.status === 'failed')) {
+    const m = ev.message.match(/([\d.]+)x/);
+    if (m) {
+      const sp = parseFloat(m[1]), ok = sp >= 1, im = ev.message.match(/Iteration (\d+)/i);
+      S.tl.push({
+        label: 'Iteration ' + (im ? im[1] : S.tl.length + 1) + (ok ? ' (optimized)' : ' (baseline)'),
+        speedup: sp,
+        good: ok
+      });
+    }
   }
+  if (ev.agent === 'coordinator' && ev.status === 'done' && ev.detail) {
+    try {
+      const r = JSON.parse(ev.detail);
+      S.rep = r;
+      rRes(r, S.tl);
+    } catch (e) { console.error('Coordinator detail parse error:', e); }
+  }
+}
+
+function done_() {
+  document.getElementById('hstat').textContent = '✨ Migration complete';
+  document.getElementById('t-loader').classList.add('hide');
+  if (!S.rep) {
+    document.getElementById('t-sum').innerHTML = '<div class="idle">Migration finished but no report was generated. Check agent logs for details.</div>';
+    document.getElementById('t-sum').classList.add('on');
+  }
+}
+
+function bLog() {
+  const el = document.getElementById('al');
+  const tl = document.getElementById('tl');
+  el.innerHTML = '';
+  tl.innerHTML = '';
   
-  try {
-    const response = await fetch('/export', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        original_cuda: state.cudaCode,
-        final_rocm: state.finalReport.optimized_code,
-        migration_report: state.finalReport
-      })
-    });
+  let i = 0;
+  for (const [k, obj] of Object.entries(AG)) {
+    // Log row
+    const d = document.createElement('div');
+    d.className = 'ar';
+    d.id = 'ar-' + k;
+    d.style.animationDelay = (i * 0.1) + 's';
+    d.innerHTML = `
+      <div class="at">
+        <span class="an">${obj.n}</span>
+        <span class="am" id="am-${k}">Waiting</span>
+      </div>
+      <div class="ad" id="ad-${k}"></div>`;
+    el.appendChild(d);
     
-    if (response.ok) {
-      // Create download link
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'rocmport_migration.zip';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } else {
-      alert('Export failed');
-    }
-  } catch (error) {
-    alert('Export error: ' + error.message);
+    // Timeline node
+    const n = document.createElement('div');
+    n.className = 'node';
+    n.id = 'nd-' + k;
+    n.title = obj.n;
+    n.innerHTML = `<div class="ni">${obj.i}</div><div class="nl">${obj.n.slice(0,3)}</div>`;
+    tl.appendChild(n);
+    i++;
   }
 }
 
-function toggleSimpleMode() {
-  const checkbox = document.getElementById('simple-mode');
-  const isSimple = checkbox.checked;
+function uLog(a, s, m, d) {
+  const row = document.getElementById('ar-' + a);
+  const node = document.getElementById('nd-' + a);
+  if (!row || !node) return;
   
-  // Update AMD explanation if available
-  if (state.finalReport && state.finalReport.simplified_explanation && state.finalReport.amd_advantage_explanation) {
-    const explanationDiv = document.getElementById('amd-explanation');
-    if (explanationDiv) {
-      explanationDiv.innerHTML = isSimple ? state.finalReport.simplified_explanation : state.finalReport.amd_advantage_explanation;
-    }
+  const statusClass = { running: 'run', done: 'done', failed: 'fail', retrying: 'retry' }[s] || '';
+  row.className = 'ar ' + statusClass;
+  node.className = 'node ' + (s === 'running' ? 'on' : s === 'retrying' ? 'retry' : s === 'done' ? 'done' : s === 'failed' ? 'fail' : '');
+  
+  const me = document.getElementById('am-' + a);
+  if (me) me.textContent = m;
+  
+  // Node tooltip message update
+  node.title = m;
+
+  const de = document.getElementById('ad-' + a);
+  if (de && d) {
+    de.innerHTML = esc(d)
+      .replace(/\u26a0\ufe0f([^\n]*)/g, '<span class="w">⚠️ $1</span>')
+      .replace(/\u2705([^\n]*)/g, '<span class="g">✅ $1</span>');
+    de.scrollTop = de.scrollHeight;
   }
 }
 
-// ── START ─────────────────────────────────────────────────
+function rRes(r, tl) {
+  // Hide loader, show summary
+  document.getElementById('t-loader').classList.add('hide');
+  document.getElementById('t-sum').classList.add('on');
+  
+  const v = r.verification || {}, bw = r.bandwidth_utilized;
+  const dot = ok => `<div class="sum-dot ${ok === false ? 'no' : 'ok'}"></div>`;
+
+  document.getElementById('t-sum').innerHTML = `
+    <div class="sum-row">
+      <div class="sum-big">
+        ${r.speedup}x
+        <span class="u">vs baseline hipify</span>
+        <span class="vic">🎯 Your code is now an AMD champion.</span>
+      </div>
+      <div class="sum-sep"></div>
+      <div>
+        <div class="sum-chk">${dot(v.compiled_successfully)} Compiled${v.mock_mode ? ' (simulated)' : ''}</div>
+        <div class="sum-chk" style="margin-top:8px">${dot(v.executed_without_error)} Executed without error</div>
+        <div class="sum-chk" style="margin-top:8px">${dot(v.output_matches_expected)} Output matches expected</div>
+      </div>
+      <div class="sum-sep"></div>
+      <div class="sum-type">${(r.bottleneck || 'optimized').toLowerCase()}</div>
+    </div>
+    <div class="sum-bar">
+      <button class="bs r" onclick="om()">Edit code</button>
+      <button class="bs gr" onclick="exM()">Export PR</button>
+      <button class="bs" onclick="dlR()">Download report</button>
+      <div class="sp"></div>
+    </div>
+    <div class="sn" id="sn" style="margin: 24px; border-left-width: 4px;">
+      <div style="font-weight: bold; margin-bottom: 8px; color: var(--cyan);">🧠 Simple explanation</div>
+      ${r.simplified_explanation ? esc(r.simplified_explanation) : '<em>Simplified explanation will appear here</em>'}
+    </div>`;
+
+  // Details tab
+  let dh = `<div class="dm">
+    <div class="di"><div class="dl">Speedup</div><div class="dv g">${r.speedup}x</div><div class="ds">optimized ROCm vs straight hipify output</div></div>
+    <div class="di"><div class="dl">Bandwidth</div><div class="dv c">${bw != null ? bw.toFixed(1) : '—'}%</div><div class="ds">of MI300X 5.3 TB/s HBM3</div></div>
+    <div class="di"><div class="dl">Changes</div><div class="dv y">${r.total_changes}</div><div class="ds">hipify + LLM + optimizer changes</div></div>
+    <div class="di"><div class="dl">Iterations</div><div class="dv c">${r.iterations || 1}</div><div class="ds">optimizer retry loop count</div></div>
+    <div class="di"><div class="dl">Type</div><div class="dv t">${(r.bottleneck || '—').toUpperCase()}</div><div class="ds">workload classification</div></div>
+  </div>`;
+  
+  if (tl.length) {
+    dh += '<div class="bk"><div class="bk-t">Benchmark iterations (optimized vs baseline hipify)</div>';
+    tl.forEach(d => {
+      const pct = Math.min(Math.max((d.speedup / 2) * 100, 3), 95);
+      dh += `<div class="br">
+        <div class="bl">${esc(d.label)}</div>
+        <div class="bt"><div class="bf ${d.good ? 'good' : 'bad'}" style="width: 0" data-w="${pct}%"></div></div>
+        <div class="bv ${d.good ? 'good' : 'bad'}">${d.speedup}x</div>
+      </div>`;
+    });
+    dh += '</div>';
+  }
+  
+  document.getElementById('t-det').innerHTML = dh;
+  tsm(); // Ensure simple note visibility matches current toggle state
+  
+  // Progress bar animation
+  setTimeout(() => {
+    document.querySelectorAll('.bf[data-w]').forEach(b => {
+      b.style.width = b.dataset.w;
+    });
+  }, 100);
+}
+
+function rDiff(o, n) {
+  if (!o || !n) return;
+  const oe = document.getElementById('d-o'), ne = document.getElementById('d-n');
+  if (oe && oe.innerHTML && ne && ne.innerHTML) return; // Already rendered
+
+  document.getElementById('t-diff').innerHTML = `<div class="dg">
+    <div class="dfs"><div class="dfh"><span class="dft cu">CUDA</span> Original Source</div><pre class="dfp" id="d-o"></pre></div>
+    <div class="dfs"><div class="dfh"><span class="dft ro">ROCm</span> Optimized HIP</div><pre class="dfp" id="d-n"></pre></div>
+  </div>`;
+  
+  const oL = o.split('\n'), nL = n.split('\n'), mx = Math.max(oL.length, nL.length);
+  let oH = '', nH = '';
+  for (let i = 0; i < mx; i++) {
+    const a = oL[i] ?? '', b = nL[i] ?? '', c = a !== b;
+    oH += `<span class="${c ? 'dlo' : ''}">${esc(a)}\n</span>`;
+    nH += `<span class="${c ? 'dln' : ''}">${esc(b)}\n</span>`;
+  }
+  document.getElementById('d-o').innerHTML = oH;
+  document.getElementById('d-n').innerHTML = nH;
+}
+
+function sTimer() { S.iv = setInterval(() => { document.getElementById('pt').textContent = ((Date.now() - S.t0) / 1000).toFixed(1) + 's' }, 100) }
+function xTimer() { clearInterval(S.iv) }
+
+function dlR() {
+  const r = S.rep; if (!r) return;
+  const md = `# ROCmPort AI — Migration Report\n\n## Results\n- **Speedup**: ${r.speedup}x\n- **Bandwidth**: ${r.bandwidth_utilized ? r.bandwidth_utilized.toFixed(1) : '—'}%\n- **Changes**: ${r.total_changes}\n- **Iterations**: ${r.iterations}\n- **Type**: ${r.bottleneck}\n\n${r.amd_advantage_explanation ? '> ' + r.amd_advantage_explanation + '\n\n' : ''}${r.cost_estimate ? '## Cost Impact\n- Manual: ' + r.cost_estimate.manual_porting_weeks + '\n- ROCmPort: ' + r.cost_estimate.rocmport_minutes + '\n- Savings: ' + r.cost_estimate.estimated_savings + '\n\n' : ''}## ROCm/HIP Code\n\`\`\`cpp\n${r.optimized_code || ''}\n\`\`\`\n\n---\n*Generated by ROCmPort AI*\n`;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' })); a.download = 'rocmport-migration-report.md'; a.click();
+}
+
+function om() { if (!S.rep) return alert('No results yet!'); document.getElementById('edt').value = S.rep?.optimized_code || ''; document.getElementById('modal').classList.add('open') }
+function cm() { document.getElementById('modal').classList.remove('open') }
+
+async function rec() {
+  const code = document.getElementById('edt').value.trim(); if (!code) return;
+  try {
+    const res = await fetch(API + '/recompile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ edited_code: code, kernel_name: S.kn }) });
+    const r = await res.json();
+    if (r.success) { cm(); if (r.result) rRes(r.result, S.tl); }
+    else alert('Failed: ' + (r.detail || 'Unknown'))
+  } catch (e) { alert('Error: ' + e.message) }
+}
+
+async function exM() {
+  if (!S.rep) return;
+  try {
+    const res = await fetch(API + '/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ original_cuda: S.code, final_rocm: S.rep.optimized_code, migration_report: S.rep }) });
+    if (res.ok) { const a = document.createElement('a'); a.href = URL.createObjectURL(await res.blob()); a.download = 'rocmport-migration.zip'; a.click() }
+  } catch (e) { alert('Export error') }
+}
+
+function tsm() {
+  const sn = document.getElementById('sn');
+  if (sn) sn.classList.remove('hide');
+}
+
+function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+
+const FB = {
+  vector_add: `#include <cuda_runtime.h>\n\n__global__ void vector_add_kernel(float* A, float* B, float* C, int N) {\n    int idx = blockIdx.x * blockDim.x + threadIdx.x;\n    if (idx < N) {\n        C[idx] = A[idx] + B[idx];\n    }\n}\n\nint main() {\n    int N = 1 << 24;\n    size_t size = N * sizeof(float);\n    float *d_A, *d_B, *d_C;\n    cudaMalloc(&d_A, size);\n    cudaMalloc(&d_B, size);\n    cudaMalloc(&d_C, size);\n    int threads = 128;\n    int blocks = (N + threads - 1) / threads;\n    vector_add_kernel<<<blocks, threads>>>(d_A, d_B, d_C, N);\n    cudaDeviceSynchronize();\n    cudaFree(d_A); cudaFree(d_B); cudaFree(d_C);\n    return 0;\n}`,
+  matrix_multiply: `#include <cuda_runtime.h>\n#define WARP_SIZE 32\n\n__global__ void matmul_kernel(float* A, float* B, float* C, int N) {\n    int row = blockIdx.y * blockDim.y + threadIdx.y;\n    int col = blockIdx.x * blockDim.x + threadIdx.x;\n    float sum = 0.0f;\n    if (row < N && col < N) {\n        for (int k = 0; k < N; k++)\n            sum += A[row * N + k] * B[k * N + col];\n        C[row * N + col] = sum;\n    }\n}\n\n__global__ void warp_reduce(float* data, float* result, int N) {\n    int tid = threadIdx.x;\n    extern __shared__ float sdata[];\n    sdata[tid] = (tid < N) ? data[tid] : 0;\n    __syncthreads();\n    for (int s = WARP_SIZE/2; s > 0; s >>= 1) {\n        if (tid < s) sdata[tid] += sdata[tid + s];\n        __syncthreads();\n    }\n    if (tid == 0) result[blockIdx.x] = sdata[0];\n}\n\nint main() {\n    int N = 1024;\n    size_t size = N * N * sizeof(float);\n    float *d_A, *d_B, *d_C;\n    cudaMalloc(&d_A, size);\n    cudaMalloc(&d_B, size);\n    cudaMalloc(&d_C, size);\n    dim3 block(16, 16);\n    dim3 grid((N+15)/16, (N+15)/16);\n    matmul_kernel<<<grid, block>>>(d_A, d_B, d_C, N);\n    cudaDeviceSynchronize();\n    cudaFree(d_A); cudaFree(d_B); cudaFree(d_C);\n    return 0;\n}`,
+  convolution_2d: `#include <cuda_runtime.h>\n#define BLOCK_SIZE 16\n\n__global__ void conv2d_kernel(\n    float* input, float* kernel, float* output,\n    int width, int height\n) {\n    int x = blockIdx.x * blockDim.x + threadIdx.x;\n    int y = blockIdx.y * blockDim.y + threadIdx.y;\n    if (x >= width || y >= height) return;\n    float sum = 0.0f;\n    for (int ky = -1; ky <= 1; ky++) {\n        for (int kx = -1; kx <= 1; kx++) {\n            int ix = x + kx, iy = y + ky;\n            if (ix >= 0 && ix < width && iy >= 0 && iy < height)\n                sum += input[iy * width + ix] * kernel[(ky+1)*3 + (kx+1)];\n        }\n    }\n    output[y * width + x] = sum;\n}\n\nint main() {\n    int W = 2048, H = 2048;\n    float *d_in, *d_ker, *d_out;\n    cudaMalloc(&d_in,  W*H*sizeof(float));\n    cudaMalloc(&d_ker, 9*sizeof(float));\n    cudaMalloc(&d_out, W*H*sizeof(float));\n    dim3 block(BLOCK_SIZE, BLOCK_SIZE);\n    dim3 grid((W+BLOCK_SIZE-1)/BLOCK_SIZE, (H+BLOCK_SIZE-1)/BLOCK_SIZE);\n    conv2d_kernel<<<grid, block>>>(d_in, d_ker, d_out, W, H);\n    cudaDeviceSynchronize();\n    cudaFree(d_in); cudaFree(d_ker); cudaFree(d_out);\n    return 0;\n}`,
+  reduction: `#include <cuda_runtime.h>\n#include <stdio.h>\n#include <iostream>\n#include <vector>\n#include <numeric>\n\n// Tree-based reduction kernel\n__global__ void reduction_kernel(float* g_idata, float* g_odata, unsigned int n) {\n    extern __shared__ float sdata[];\n    unsigned int tid = threadIdx.x;\n    unsigned int i = blockIdx.x * (blockDim.x * 2) + threadIdx.x;\n\n    float mySum = (i < n) ? g_idata[i] : 0;\n    if (i + blockDim.x < n) mySum += g_idata[i + blockDim.x];\n    sdata[tid] = mySum;\n    __syncthreads();\n\n    for (unsigned int s = blockDim.x / 2; s > 32; s >>= 1) {\n        if (tid < s) sdata[tid] = mySum = mySum + sdata[tid + s];\n        __syncthreads();\n    }\n\n    // DELIBERATE WARP-SIZE BUG: Unroll to 32 instead of 64\n    if (tid < 32) {\n        volatile float* vsmem = sdata;\n        vsmem[tid] = mySum = mySum + vsmem[tid + 32];\n        vsmem[tid] = mySum = mySum + vsmem[tid + 16];\n        vsmem[tid] = mySum = mySum + vsmem[tid + 8];\n        vsmem[tid] = mySum = mySum + vsmem[tid + 4];\n        vsmem[tid] = mySum = mySum + vsmem[tid + 2];\n        vsmem[tid] = mySum = mySum + vsmem[tid + 1];\n    }\n\n    if (tid == 0) g_odata[blockIdx.x] = sdata[0];\n}\n\nint main() {\n    const int N = 1048576;\n    // ... Host code for Parallel Reduction demo\n    printf("Parallel Reduction demo loaded.\\n");\n    return 0;\n}`
+};
+
 init();
 </script>
-
-<footer style="text-align: center; margin-top: 2rem; padding: 1rem; border-top: 1px solid #2a2a2a; font-size: 0.8rem; color: #888;">
-    Created by <a href="https://x.com/TazwarEnan" target="_blank" style="color: #00aaff;">Tazwar Ahnaf Enan</a> | 
-    <a href="https://github.com/tazwaryayyyy" target="_blank" style="color: #00aaff;">GitHub</a>
-</footer>
-
 </body>
 </html>

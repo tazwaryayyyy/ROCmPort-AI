@@ -2,12 +2,13 @@ import json
 import re
 from models import AnalyzerResult, WorkloadType
 from tools.llm_client import LLMClient
+from tools.json_utils import safe_json_loads
 
 llm_client = LLMClient()
 
-def chat_complete(messages: list) -> str:
+def chat_complete(messages: list, temperature: float = 0.7, max_tokens: int = 4000) -> str:
     """Wrapper for LLM client chat completion"""
-    return llm_client.chat_completion(messages)
+    return llm_client.chat_completion(messages, temperature=temperature, max_tokens=max_tokens)
 
 def generate_prediction(workload_type: WorkloadType, line_count: int) -> str:
     """Generate performance prediction based on workload analysis"""
@@ -53,17 +54,29 @@ def run(cuda_code: str) -> AnalyzerResult:
     # Count lines for complexity estimation
     line_count = len([line for line in cuda_code.split('\n') if line.strip()])
     
-    raw = chat_complete(
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Analyze this CUDA code:\n\n```cuda\n{cuda_code}\n```"}
-        ],
-        temperature=0.1,
-        max_tokens=1024,
-    )
-
-    raw = re.sub(r"```json|```", "", raw).strip()
-    data = json.loads(raw)
+    try:
+        raw = chat_complete(
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"Analyze this CUDA code:\n\n```cuda\n{cuda_code}\n```"}
+            ],
+            temperature=0.1,
+            max_tokens=1024,
+        )
+        data = safe_json_loads(raw)
+    except Exception:
+        # Fallback to defaults on LLM/parse failure
+        data = {
+            "kernels_found": ["unknown_kernel"],
+            "cuda_apis": [],
+            "warp_size_issue": False,
+            "workload_type": "memory-bound",
+            "sharding_detected": False,
+            "difficulty": "Medium",
+            "difficulty_reason": "Analysis failed, using safe defaults",
+            "line_count": line_count,
+            "complexity_score": 5
+        }
     
     workload_type = WorkloadType(data.get("workload_type", "unknown"))
     prediction = generate_prediction(workload_type, line_count)

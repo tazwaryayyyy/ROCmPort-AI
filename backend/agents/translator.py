@@ -3,13 +3,14 @@ import re
 from models import TranslatorResult, AnalyzerResult
 from tools.llm_client import LLMClient
 from tools.hipify_wrapper import HipifyWrapper
+from tools.json_utils import safe_json_loads
 
 llm_client = LLMClient()
 hipify_wrapper = HipifyWrapper()
 
-def chat_complete(messages: list) -> str:
+def chat_complete(messages: list, temperature: float = 0.7, max_tokens: int = 4000) -> str:
     """Wrapper for LLM client chat completion"""
-    return llm_client.chat_completion(messages)
+    return llm_client.chat_completion(messages, temperature=temperature, max_tokens=max_tokens)
 
 def run_hipify(cuda_code: str) -> str:
     """Wrapper for hipify wrapper"""
@@ -62,17 +63,22 @@ Code after hipify:
 ```
 """
 
-    raw = chat_complete(
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": context}
-        ],
-        temperature=0.1,
-        max_tokens=4096,
-    )
-
-    raw = re.sub(r"```json|```", "", raw).strip()
-    data = json.loads(raw)
+    try:
+        raw = chat_complete(
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": context}
+            ],
+            temperature=0.1,
+            max_tokens=4096,
+        )
+        data = safe_json_loads(raw)
+    except Exception:
+        # Fallback to hipify output if LLM fails
+        data = {
+            "fixed_code": hip_code_pass1,
+            "llm_changes": []
+        }
 
     final_code = data.get("fixed_code", hip_code_pass1)
     llm_changes = data.get("llm_changes", [])
