@@ -1192,7 +1192,9 @@ __global__ void kernel(float* A, float* B, int N) {
   </div>
 </div>
 <script>
-  const API = 'http://localhost:8000';
+  const API = window.location.protocol === 'file:'
+    ? 'http://localhost:8000'
+    : window.location.origin;
   const S = { code: '', kn: 'custom', run: false, t0: null, iv: null, rep: null, tl: [], kernels: {} };
   const AG = {
     analyzer: { n: 'ANALYZER', i: '🔍' },
