@@ -1,45 +1,59 @@
+from openai import OpenAI
+from groq import Groq
+from typing import Optional, Dict, Any
 import os
 from dotenv import load_dotenv
+
+# pylint: disable=broad-exception-caught
 
 # Load environment variables
 load_dotenv()
 
-from typing import Optional, Dict, Any
-from groq import Groq
-from openai import OpenAI
 
 class LLMClient:
     """Unified LLM client supporting both Groq (local) and vLLM (AMD Cloud)"""
-    
+
     def __init__(self):
         self.use_vllm = os.getenv("USE_VLLM", "false").lower() == "true"
-        
+        self.client = None
+        self.model = "mock"
+        self.init_error: Optional[str] = None
+
         if self.use_vllm:
             # vLLM configuration for AMD Cloud
-            self.vllm_base_url = os.getenv("VLLM_BASE_URL", "http://localhost:8000")
+            self.vllm_base_url = os.getenv(
+                "VLLM_BASE_URL", "http://localhost:8000")
             self.vllm_api_key = os.getenv("VLLM_API_KEY", "dummy-key")
-            self.client = OpenAI(
-                base_url=self.vllm_base_url,
-                api_key=self.vllm_api_key
-            )
-            self.model = os.getenv("VLLM_MODEL", "amd/llama-3.3-70b")
+            try:
+                self.client = OpenAI(
+                    base_url=self.vllm_base_url,
+                    api_key=self.vllm_api_key
+                )
+                self.model = os.getenv("VLLM_MODEL", "amd/llama-3.3-70b")
+            except Exception as e:
+                self.init_error = f"vLLM client init failed: {str(e)}"
+                print(
+                    f"Warning: {self.init_error}. Falling back to mock mode.")
         else:
             # Groq configuration for local development
             self.groq_api_key = os.getenv("GROQ_API_KEY")
             if not self.groq_api_key:
                 print("Warning: GROQ_API_KEY not found. Using mock mode.")
-                self.client = None
-                self.model = "mock"
                 return
-            self.client = Groq(api_key=self.groq_api_key)
-            self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    
+            try:
+                self.client = Groq(api_key=self.groq_api_key)
+                self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+            except Exception as e:
+                self.init_error = f"Groq client init failed: {str(e)}"
+                print(
+                    f"Warning: {self.init_error}. Falling back to mock mode.")
+
     def chat_completion(self, messages: list, temperature: float = 0.7, max_tokens: int = 4000) -> str:
         """Send chat completion request to the configured LLM"""
         if self.client is None:
             # Mock response when no API key is available
             return '{"kernels_found": ["mock_kernel"], "cuda_apis": ["cudaMalloc"], "warp_size_issue": true, "workload_type": "memory-bound", "sharding_detected": false, "difficulty": "Medium"}'
-        
+
         try:
             if self.use_vllm:
                 response = self.client.chat.completions.create(
@@ -57,10 +71,10 @@ class LLMClient:
                     max_tokens=max_tokens
                 )
                 return response.choices[0].message.content
-                
+
         except Exception as e:
-            raise Exception(f"LLM request failed: {str(e)}")
-    
+            raise RuntimeError(f"LLM request failed: {str(e)}") from e
+
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about the current model configuration"""
         if self.use_vllm:
@@ -76,7 +90,7 @@ class LLMClient:
                 'model': self.model,
                 'platform': 'Local Development'
             }
-    
+
     def test_connection(self) -> bool:
         """Test if the LLM connection is working"""
         try:
@@ -85,5 +99,5 @@ class LLMClient:
             ]
             response = self.chat_completion(test_messages, max_tokens=10)
             return "OK" in response.upper()
-        except:
+        except Exception:
             return False
