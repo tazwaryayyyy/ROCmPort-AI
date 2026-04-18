@@ -1,82 +1,92 @@
-# ROCmPort AI - Benchmark Results
+# ROCmPort AI Benchmarking Guide
 
-## 📊 Performance Results on AMD MI300X (Real rocprof)
+This document defines how to report performance without overclaiming.
 
-| Kernel | Size | Baseline HIP | Optimized ROCm | Speedup | Notes |
-|--------|------|--------------|----------------|---------|-------|
-| **Matrix Multiply** | 1024×1024 | 12.4ms | 9.5ms | **1.31x** | Shared memory tiling applied |
-| **Vector Add** | 10M elements | 3.2ms | 2.9ms | **1.10x** | Memory coalescing fixed |
-| **2D Convolution** | 256×256 | 28.7ms | 21.3ms | **1.35x** | LDS optimization applied |
-| **Parallel Reduction** | 1M elements | 15.2ms | 12.1ms | **1.25x** | Warp-size aligned unrolling |
+## Reporting Principles
 
-### 🎯 Key Findings
+- Compare against a clearly stated baseline.
+- Use reproducible runs with fixed input sizes and environment details.
+- Include correctness checks before accepting performance numbers.
+- Report failures and non-improving cases, not only wins.
 
-- **Memory-bound kernels** show the highest gains (up to 1.35x)
-- **Compute-bound kernels** show moderate improvements (1.10-1.20x)
-- **Shared memory tiling** is the most effective optimization
-- **Wavefront alignment** consistently improves performance
+## Baseline Definitions
 
-### 📈 Performance Breakdown
+Use one of these and name it explicitly in each table:
 
-#### Matrix Multiply (1024×1024)
-- **Baseline HIP**: 12.4ms (straight hipify output)
-- **Optimized ROCm**: 9.5ms (after agent optimizations)
-- **Bandwidth Utilization**: 87% → 94%
-- **Key Optimization**: 32×32 shared memory tiles
+- Baseline A: Straight `hipify-clang` output with minimal manual edits.
+- Baseline B: Existing hand-written HIP version from the team.
 
-#### Vector Add (10M elements)
-- **Baseline HIP**: 3.2ms
-- **Optimized ROCm**: 2.9ms
-- **Bandwidth Utilization**: 71% → 78%
-- **Key Optimization**: Memory access coalescing
+Recommended: use Baseline A for measuring migration automation value.
 
-#### 2D Convolution (256×256)
-- **Baseline HIP**: 28.7ms
-- **Optimized ROCm**: 21.3ms
-- **Bandwidth Utilization**: 68% → 91%
-- **Key Optimization**: LDS (Local Data Store) usage
+Quick answer format for live review:
 
-#### Parallel Reduction (1M elements)
-- **Baseline HIP**: 15.2ms
-- **Optimized ROCm**: 12.1ms
-- **Bandwidth Utilization**: 74% → 89%
-- **Key Optimization**: 64-thread wavefront aware unrolling
+- Q: What is your baseline?
+- A: Straight hipify output with minimal compile edits (Baseline A), measured on the same hardware and inputs.
 
----
+## Required Environment Metadata
 
-### 🔬 Hardware Configuration
+Always include:
 
-**Test System:**
-- **GPU**: AMD Instinct MI300X
-- **Memory**: 192GB HBM3
-- **Bandwidth**: 5.3 TB/s theoretical
-- **ROCm Version**: 6.2
-- **Compiler**: hipcc 6.2.0
-- **Profiler**: rocprof v2
+- GPU model (for example MI300X) and memory size.
+- ROCm version, compiler version, and profiler version.
+- OS and driver versions.
+- Kernel launch parameters and input sizes.
+- Number of runs and aggregation rule (median recommended).
 
-**Environment:**
-- **OS**: Ubuntu 22.04 LTS
-- **Driver**: AMDGPU 23.40
-- **CPU**: AMD EPYC 9654 (for comparison)
+## Required Measurement Fields
 
----
+For each kernel tested, provide:
 
-### 📝 Methodology
+- Kernel name and workload shape.
+- Baseline latency.
+- Optimized latency.
+- Speedup ratio.
+- Correctness status (pass/fail and checksum or tolerance).
+- Notes on optimization strategy.
 
-1. **Baseline**: Generated using `hipify-clang` with no optimizations
-2. **Optimized**: ROCmPort AI agent pipeline applied
-3. **Measurement**: rocprof with kernel execution counters
-4. **Validation**: Output correctness verified via checksum
-5. **Iterations**: 3 runs per kernel, median reported
+Example table format:
 
----
+| Kernel | Shape | Baseline (ms) | Optimized (ms) | Speedup | Correctness | Notes |
+|---|---|---:|---:|---:|---|---|
+| matrix_multiply | 1024x1024 | 12.4 | 9.5 | 1.31x | pass | LDS tiling + wavefront-aware launch |
 
-### 🏆 Performance Claims
+Include non-win cases in the same table. Example:
 
-> **ROCmPort AI delivers 1.10x to 1.35x speedup over baseline HIP**
+| Kernel | Shape | Baseline (ms) | Optimized (ms) | Speedup | Correctness | Notes |
+|---|---|---:|---:|---:|---|---|
+| sparse_scatter | 4M elements | 6.0 | 6.3 | 0.95x | pass | Irregular access pattern; optimization did not help |
 
-**Important**: All comparisons are **Optimized ROCm vs Baseline HIP** (straight hipify output). We do not compare against NVIDIA CUDA performance - we prove our agents add value beyond mechanical translation.
+## Reproducibility Checklist
 
----
+Before publishing numbers, verify all items:
 
-*Benchmarked on AMD Instinct MI300X, ROCm 6.2, rocprof counters. Results may vary based on input size and system configuration.*
+- Same input set for baseline and optimized runs.
+- Warm-up runs excluded or consistently handled.
+- At least 3 measured runs (prefer 5+) with median reported.
+- No hidden manual edits after optimization output unless documented.
+- Full command lines and profiler artifacts retained.
+
+## Evidence Package for Review
+
+A technical review package should include:
+
+- CUDA source input.
+- Baseline HIP output.
+- Optimized HIP output.
+- Compile logs and profiler summaries.
+- Final report explaining what changed and why.
+
+## Interpreting Results Responsibly
+
+- Some kernels will regress or fail initially; this is normal for migration.
+- Improvement ranges vary by memory behavior, occupancy, and control-flow patterns.
+- Do not claim universal speedups.
+
+Preferred claim style:
+
+"ROCmPort AI improved X out of Y tested kernels against a stated baseline under reproducible MI300X conditions."
+
+## Current Repository Status
+
+The repository includes demo kernels intended to exercise migration behavior.
+Treat any sample numbers as demonstrations unless accompanied by full reproducibility artifacts from your environment.

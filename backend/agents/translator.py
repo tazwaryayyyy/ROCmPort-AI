@@ -1,20 +1,23 @@
-import json
-import re
-from models import TranslatorResult, AnalyzerResult
-from tools.llm_client import LLMClient
-from tools.hipify_wrapper import HipifyWrapper
-from tools.json_utils import safe_json_loads
+# pylint: disable=broad-exception-caught
+
+from ..models import TranslatorResult, AnalyzerResult
+from ..tools.llm_client import LLMClient
+from ..tools.hipify_wrapper import HipifyWrapper
+from ..tools.json_utils import safe_json_loads
 
 llm_client = LLMClient()
 hipify_wrapper = HipifyWrapper()
+
 
 def chat_complete(messages: list, temperature: float = 0.7, max_tokens: int = 4000) -> str:
     """Wrapper for LLM client chat completion"""
     return llm_client.chat_completion(messages, temperature=temperature, max_tokens=max_tokens)
 
+
 def run_hipify(cuda_code: str) -> str:
     """Wrapper for hipify wrapper"""
     return hipify_wrapper.hipify_code(cuda_code)
+
 
 SYSTEM_PROMPT = """You are an expert AMD ROCm/HIP engineer. You receive CUDA code that has already gone through hipify (basic syntax replacement) and you fix what hipify missed.
 

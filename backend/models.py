@@ -23,6 +23,15 @@ class PortRequest(BaseModel):
     simple_mode: Optional[bool] = False  # For "Explain Like I'm 5" feature
 
 
+class ColdStartRequest(BaseModel):
+    cuda_code: str
+    kernel_name: Optional[str] = "unknown_input"
+
+
+class AggregateMetricsRequest(BaseModel):
+    kernel_names: Optional[List[str]] = None
+
+
 class AgentEvent(BaseModel):
     agent: str          # analyzer | translator | optimizer | tester | coordinator
     status: AgentStatus
@@ -83,7 +92,8 @@ class TesterResult(BaseModel):
     execution_ms: float
     bottleneck: str
     notes: str
-    verification: Optional[VerificationResult] = None  # Trust layer verification
+    # Trust layer verification
+    verification: Optional[VerificationResult] = None
 
 
 class FinalReport(BaseModel):
@@ -96,5 +106,7 @@ class FinalReport(BaseModel):
     iterations: int
     hip_code: str
     optimized_code: str
+    verification: Optional[VerificationResult] = None
     cost_estimate: Optional[CostEstimate] = None  # 💰 Cost impact estimator
-    simplified_explanation: Optional[str] = None  # For "Explain Like I'm 5" mode
+    # For "Explain Like I'm 5" mode
+    simplified_explanation: Optional[str] = None

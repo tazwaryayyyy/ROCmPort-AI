@@ -1,14 +1,16 @@
-import json
-import re
-from models import OptimizerResult, AnalyzerResult, WorkloadType
-from tools.llm_client import LLMClient
-from tools.json_utils import safe_json_loads
+# pylint: disable=broad-exception-caught
+
+from ..models import OptimizerResult, AnalyzerResult, WorkloadType
+from ..tools.llm_client import LLMClient
+from ..tools.json_utils import safe_json_loads
 
 llm_client = LLMClient()
+
 
 def chat_complete(messages: list, temperature: float = 0.7, max_tokens: int = 4000) -> str:
     """Wrapper for LLM client chat completion"""
     return llm_client.chat_completion(messages, temperature=temperature, max_tokens=max_tokens)
+
 
 ALLOWED_OPTIMIZATIONS = """
 You may ONLY suggest these specific, well-known AMD MI300X optimizations:

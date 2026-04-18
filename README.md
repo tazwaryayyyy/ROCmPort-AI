@@ -1,25 +1,117 @@
 # ROCmPort AI
 
-**The fastest way to escape CUDA lock-in and run on AMD.**
+ROCmPort AI helps CUDA teams migrate to AMD by translating, testing, and iteratively optimizing kernels using real hardware feedback.
 
-Paste CUDA code → 5 AI agents automatically port it to ROCm/HIP → optimize for MI300X → benchmark on real hardware → show you the performance improvement — live, with full visibility into every decision the agents make.
+It is an acceleration system for migration work, not a one-click replacement for CUDA expertise.
 
----
+## What This Project Is
 
-## 🎬 What Happens in 10 Seconds
-1. Paste CUDA code
-2. AI detects issues (warp size, memory bottlenecks)
-3. Converts to ROCm
-4. Tries optimization → fails → retries
-5. Shows real benchmark improvement on AMD GPU
+ROCmPort AI orchestrates a migration loop:
 
-Result: Working, optimized AMD code in minutes.
+1. Analyze CUDA code and detect migration risks.
+2. Translate with hipify plus LLM-assisted fixes.
+3. Compile and profile with ROCm tooling.
+4. Propose optimization changes and re-test.
+5. Return artifacts and decision trace.
 
----
+## What This Project Is Not
 
-## 🚀 Quick Start
+- Not guaranteed to auto-fix all CUDA kernels.
+- Not a claim that every kernel improves.
+- Not a replacement for domain experts in performance-critical code.
 
-### Option 1: One-Click Start (Recommended)
+Complex kernels can fail conversion due to architecture assumptions, undefined behavior, inline PTX, or handcrafted memory logic. The value is reduced migration time and faster debug loops.
+
+## Target User and Business Case
+
+Primary product position:
+- Tool for teams evaluating AMD migration cost and performance tradeoffs.
+
+Typical use cases:
+- Port legacy CUDA modules to HIP/ROCm with a measurable baseline.
+- Build a migration backlog ranked by risk and expected impact.
+- Identify kernels where MI300X memory capacity can remove sharding complexity.
+
+Cost and performance impact should be calculated from your environment and workload, not fixed marketing ranges.
+
+## AMD-Specific Technical Considerations (MI300X)
+
+ROCmPort AI explicitly reasons about AMD constraints and opportunities, including:
+
+- Wavefront size 64 (vs CUDA warp 32 assumptions), which affects reduction trees, ballot/shuffle idioms, and launch geometry.
+- LDS (local data store) usage and bank behavior for tile staging and reuse.
+- MI300X memory capacity (192GB HBM) and implications for reducing model/data sharding in some workflows.
+- Memory access patterns and occupancy tradeoffs under ROCm compiler behavior.
+
+These are the places where migration often breaks or underperforms even after a successful hipify pass.
+
+### Concrete Wavefront Mismatch Example
+
+From `backend/demo_kernels/reduction.cu`, the reduction tail assumes a 32-thread warp:
+
+```cpp
+// NVIDIA-style assumption (incorrect on AMD wavefront=64)
+if (tid < 32) {
+	volatile float* vsmem = sdata;
+	vsmem[tid] += vsmem[tid + 32];
+	vsmem[tid] += vsmem[tid + 16];
+	...
+}
+```
+
+A wavefront-aware correction expands the final stage to include the 64-wide lane behavior:
+
+```cpp
+// AMD-aware final reduction stage
+if (tid < 64) {
+	volatile float* vsmem = sdata;
+	vsmem[tid] += vsmem[tid + 32];
+	if (tid < 32) {
+		vsmem[tid] += vsmem[tid + 16];
+		vsmem[tid] += vsmem[tid + 8];
+		vsmem[tid] += vsmem[tid + 4];
+		vsmem[tid] += vsmem[tid + 2];
+		vsmem[tid] += vsmem[tid + 1];
+	}
+}
+```
+
+The key point is not the exact rewrite shape; it is that warp-size assumptions must be made explicit and re-validated on AMD.
+
+## Why This Is More Than Glue
+
+ROCmPort AI combines existing tools, but its core value is the control system around them:
+
+- Decision loop: detect failure/perf regressions, apply next strategy, re-run.
+- Explainability: stream each step and rationale (SSE logs + final report).
+- Verification: pair code changes with compile/test/profiler evidence.
+
+## Judge Mode Walkthrough
+
+Use this flow for technical review:
+
+1. Show original CUDA kernel.
+2. Show baseline HIP from straight hipify output.
+3. Run ROCmPort AI and show per-agent trace.
+4. Show final optimized HIP output.
+5. Show measured result against the declared baseline.
+6. Show one case with marginal gain or no gain.
+
+This format makes the comparison falsifiable and avoids curated-demo concerns.
+
+- Full walkthrough: `docs/JUDGE_MODE.md`.
+
+## Documented Failure Case
+
+At least one failure path is documented with source, output, root cause, and fix requirements:
+
+- See `docs/FAILURE_CASES.md`.
+
+This is intentional: credibility improves when the system's failure boundary is visible.
+
+## Quick Start
+
+### Option 1: Startup Script
 
 ```bash
 # Windows
@@ -29,247 +121,99 @@ start.bat
 ./start.sh
 ```
 
-This will:
-- Install all dependencies
-- Create .env file from template
-- Start the FastAPI server
-- Open the web interface at `http://localhost:8000`
-
-### Option 2: Manual Setup
+### Option 2: Manual
 
 ```bash
 cd backend
 pip install -r requirements.txt
 cp .env.example .env
-# Add your GROQ_API_KEY to .env file
+# add your GROQ_API_KEY
 uvicorn main:app --reload --port 8000
 ```
 
-Then open `frontend/index.html` in your browser.
+Open `frontend/index.html` in a browser.
 
----
-
-## � One-Command Demo with Docker
+### Option 3: Docker
 
 ```bash
 docker build -t rocmport-ai .
 docker run -p 8000:8000 rocmport-ai
 ```
 
-Then open http://localhost:8000 in your browser.
+## Benchmarking and Reproducibility
 
----
+Benchmark claims should always include:
 
-## � Project Structure
+- Baseline definition (e.g., straight hipify output).
+- Hardware/software versions.
+- Input sizes and run counts.
+- Correctness verification.
+- Full logs or scripts to reproduce.
 
-```
+See `BENCHMARKS.md` for the recommended reporting format used by this repository.
+
+## Project Structure
+
+```text
 ROCmPort AI/
 ├── backend/
-│   ├── main.py              ← FastAPI + SSE streaming endpoint
-│   ├── models.py            ← All Pydantic schemas
-│   ├── requirements.txt     ← Dependencies (includes openai==1.47.0)
+│   ├── main.py
+│   ├── models.py
 │   ├── agents/
-│   │   ├── analyzer.py      ← Warp size detection, workload classification
-│   │   ├── translator.py    ← hipify pass 1 + LLM pass 2
-│   │   ├── optimizer.py     ← AMD MI300X-specific optimizations
-│   │   ├── tester.py        ← Real rocprof OR mocked (controlled failure)
-│   │   └── coordinator.py  ← Full pipeline + retry loop
+│   │   ├── analyzer.py
+│   │   ├── translator.py
+│   │   ├── optimizer.py
+│   │   ├── tester.py
+│   │   └── coordinator.py
 │   ├── tools/
-│   │   ├── hipify_wrapper.py ← Real hipify-clang or Python fallback
-│   │   ├── rocprof_wrapper.py ← hipcc compiler + rocprof parser
-│   │   └── llm_client.py    ← Groq ↔ vLLM swap for AMD Cloud
+│   │   ├── hipify_wrapper.py
+│   │   ├── rocprof_wrapper.py
+│   │   └── llm_client.py
 │   ├── demo_kernels/
-│   │   ├── vector_add.cu    ← Simple kernel with warp size bug
-│   │   ├── matrix_multiply.cu ← Complex kernel with controlled failure
-│   │   ├── convolution_2d.cu ← Advanced kernel for optimization demo
-│   │   └── reduction.cu      ← Classic reduction with warp size unroll bug
 │   └── prompts/
-│       ├── analyzer_prompt.txt
-│       ├── translator_prompt.txt
-│       ├── optimizer_prompt.txt
-│       └── coordinator_prompt.txt
 ├── frontend/
-│   └── index.html           ← Full UI with dark terminal aesthetic
-├── .env.example             ← Environment variables template
-├── start.bat                ← Windows startup script
-├── start.sh                 ← Linux/Mac startup script
-└── README.md                ← This file
+│   └── index.html
+├── BENCHMARKS.md
+└── README.md
 ```
 
----
+## Configuration
 
-## 🤖 The 5 Agents
-
-### 1. **Analyzer** — Deep Code Analysis
-- Detects all CUDA kernels and APIs
-- **Critical**: Flags warp size assumptions (32→64 threads)
-- Classifies workload: compute-bound vs memory-bound
-- Identifies multi-GPU sharding (unnecessary on MI300X's 192GB)
-
-### 2. **Translator** — Two-Pass Conversion
-- **Pass 1**: hipify-clang for mechanical replacements (cuda→hip)
-- **Pass 2**: LLM fixes what hipify misses (warp size, intrinsics)
-- Tracks every change with confidence levels
-
-### 3. **Optimizer** — MI300X-Specific Tuning
-- Shared memory tiling (32×32 blocks)
-- Memory coalescing fixes
-- Wavefront alignment (256 thread blocks)
-- Removes GPU sharding code
-
-### 4. **Tester** — Real Hardware Benchmarking
-- Compiles with hipcc
-- Profiles with rocprof on real MI300X
-- **Controlled failure**: Iteration 1 performs worse → triggers retry
-- Iteration 2 shows improvement
-
-### 5. **Coordinator** — Intelligent Orchestration
-- Manages retry loop when optimization fails
-- Generates final migration report
-- Explains AMD hardware advantages
-
----
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-Copy `.env.example` to `.env` and configure:
+Copy `.env.example` to `.env`:
 
 ```bash
-# Required for local development
-GROQ_API_KEY=your_groq_api_key_here
-
-# Optional: Override Groq model
+GROQ_API_KEY=your_key
 GROQ_MODEL=llama-3.3-70b-versatile
 
-# For AMD Cloud deployment
 USE_VLLM=true
 VLLM_BASE_URL=http://your-amd-cloud:8000
 VLLM_API_KEY=your_vllm_key
 VLLM_MODEL=amd/llama-3.3-70b
 
-# On AMD Cloud with real hardware
 ROCM_AVAILABLE=true
 HIPCC_PATH=hipcc
 ROCPROF_PATH=rocprof
 ```
 
-### Getting API Keys
+## Defensible Scope
 
-1. **Groq (Local Development)**: Free at [console.groq.com](https://console.groq.com)
-2. **vLLM (AMD Cloud)**: Deploy vLLM on MI300X with OpenAI-compatible API
+This project is harder to replicate than a thin wrapper because it couples:
 
----
+- Multi-agent orchestration with retry decisions.
+- Structured traceability across analysis, translation, optimization, and test phases.
+- Integrated reporting where claims can be audited against intermediate artifacts.
 
-## 🎯 Demo Kernels
+A basic weekend clone can chain hipify and an LLM. The differentiator is reliable decision flow and evidence quality under failure.
 
-Three pre-tested CUDA examples included:
+## Troubleshooting
 
-1. **Vector Add** - Simple kernel demonstrating basic pipeline
-2. **Matrix Multiply** - Shows shared memory tiling optimization
-3. **2D Convolution** - Advanced memory access pattern optimization
-4. **Parallel Reduction** - Demonstrates warp-size aware unrolling (32 vs 64)
+| Issue | Resolution |
+|---|---|
+| `GROQ_API_KEY not found` | Add key to `.env`. |
+| `hipcc not found` | Install ROCm toolchain or run in an ROCm-enabled environment. |
+| Backend unavailable | Verify FastAPI server is running on port `8000`. |
+| No improvement observed | Re-check baseline definition, kernel size, and profiler counters. |
 
-All contain intentional warp size bugs to demonstrate AMD-specific fixes.
+## License
 
----
-
-## 🌐 AMD Cloud Deployment
-
-simply set:
-```bash
-ROCM_AVAILABLE=true
-USE_VLLM=true
-```
-
-Everything else is already wired up for real MI300X hardware.
-
----
-
-## 🔧 Development
-
-### Running Tests
-```bash
-cd backend
-python -m pytest tests/
-```
-
-### Code Structure
-- **FastAPI** backend with SSE streaming
-- **Vanilla JS** frontend (no heavy frameworks)
-- **CrewAI** for agent orchestration
-- **Pydantic** for data models
-
-### Contributing
-1. Fork the repository
-2. Create feature branch
-3. Test with demo kernels
-4. Submit PR
-
----
-
----
-
-## 🎥 Watch the 2-min Demo
-
-[ROCmPort AI on AMD MI300X](https://youtu.be/your-link)
-
----
-
-## ☁️ Run on AMD Cloud (Real MI300X)
-
-```bash
-# Set environment for real hardware
-export ROCM_AVAILABLE=true
-export USE_VLLM=true
-
-# Deploy vLLM on MI300X
-docker run --gpus all -p 8000:8000 \
-  vllm/vllm:latest \
-  --model amd/llama-3.3-70b \
-  --gpu-memory-utilization 0.95
-
-# Start ROCmPort AI
-cd backend
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
----
-
-## 🔧 Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| **"GROQ_API_KEY not found"** | Add your API key to `.env` file from [console.groq.com](https://console.groq.com) |
-| **"hipcc not found"** | Install ROCm: `sudo apt install rocm-dkms` or use AMD Cloud |
-| **"Permission denied"** | Check file permissions: `chmod +x start.sh` |
-| **Frontend not loading** | Ensure backend is running on port 8000 |
-| **No speedup shown** | Check if `ROCM_AVAILABLE=true` for real hardware |
-
----
-
-## 🎯 Why ROCmPort AI Wins This Hackathon
-
-1. **Real Hardware Integration** - Actual MI300X benchmarking with rocprof, not mocked data
-2. **Intelligent Agent Pipeline** - 5 specialized AI agents working in sequence with retry logic
-3. **Trust Layer Verification** - Checksum verification ensures migrated code actually works
-4. **Human Override Capability** - Developers can edit and re-test optimized code
-5. **Cost Impact Analysis** - Shows real business value ($20k-$100k savings per module)
-6. **Simple Mode Toggle** - "Explain Like I'm 5" makes complex concepts accessible
-7. **Live SSE Streaming** - Real-time visibility into every agent decision
-8. **GitHub PR Simulation** - One-click export with diffs and reports
-9. **Predictive Analysis** - AI predicts performance gains before optimization
-10. **Honest Performance Claims** - Compares optimized ROCm vs baseline HIP, not fabricated NVIDIA comparisons
-
----
-
-## 👤 Creator
-
-**Tazwar Ahnaf Enan**  
-AI Engineer & GPU Systems Builder
-
-[![X (Twitter)](https://img.shields.io/badge/X-@TazwarEnan-1DA1F2?style=flat-square&logo=x)](https://x.com/TazwarEnan)  
-[![GitHub](https://img.shields.io/badge/GitHub-tazwaryayyyy-181717?style=flat-square&logo=github)](https://github.com/tazwaryayyyy)
-
-*Built with 🔥 for AMD Developer Hackathon 2026*
+See `LICENSE`.

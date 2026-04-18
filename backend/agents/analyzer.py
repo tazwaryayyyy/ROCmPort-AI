@@ -1,23 +1,27 @@
-import json
-import re
-from models import AnalyzerResult, WorkloadType
-from tools.llm_client import LLMClient
-from tools.json_utils import safe_json_loads
+# pylint: disable=broad-exception-caught
+
+from ..models import AnalyzerResult, WorkloadType
+from ..tools.llm_client import LLMClient
+from ..tools.json_utils import safe_json_loads
 
 llm_client = LLMClient()
+
 
 def chat_complete(messages: list, temperature: float = 0.7, max_tokens: int = 4000) -> str:
     """Wrapper for LLM client chat completion"""
     return llm_client.chat_completion(messages, temperature=temperature, max_tokens=max_tokens)
 
+
 def generate_prediction(workload_type: WorkloadType, line_count: int) -> str:
     """Generate performance prediction based on workload analysis"""
+    size_hint = "large" if line_count and line_count > 200 else "small/medium"
     if workload_type == WorkloadType.MEMORY_BOUND:
-        return "🧠 Prediction: This kernel is memory-bound → HIGH potential gain on MI300X (5.3 TB/s vs H100 3.35 TB/s bandwidth)"
+        return f"🧠 Prediction: This {size_hint} kernel is memory-bound → HIGH potential gain on MI300X (5.3 TB/s vs H100 3.35 TB/s bandwidth)"
     elif workload_type == WorkloadType.COMPUTE_BOUND:
-        return "🧠 Prediction: This kernel is compute-bound → MODERATE gain on MI300X (wavefront efficiency improvements)"
+        return f"🧠 Prediction: This {size_hint} kernel is compute-bound → MODERATE gain on MI300X (wavefront efficiency improvements)"
     else:
         return "🧠 Prediction: Unknown workload type → LIMITED gain prediction without further analysis"
+
 
 SYSTEM_PROMPT = """You are an expert CUDA and GPU architecture engineer analyzing CUDA code before porting it to AMD ROCm/HIP.
 
@@ -53,7 +57,7 @@ Respond ONLY with this exact JSON structure, no markdown, no extra text:
 def run(cuda_code: str) -> AnalyzerResult:
     # Count lines for complexity estimation
     line_count = len([line for line in cuda_code.split('\n') if line.strip()])
-    
+
     try:
         raw = chat_complete(
             messages=[
@@ -77,7 +81,7 @@ def run(cuda_code: str) -> AnalyzerResult:
             "line_count": line_count,
             "complexity_score": 5
         }
-    
+
     workload_type = WorkloadType(data.get("workload_type", "unknown"))
     prediction = generate_prediction(workload_type, line_count)
 

@@ -1,15 +1,14 @@
 import subprocess
 import tempfile
 import os
-import re
 
 
 class HipifyWrapper:
     """Wrapper for hipify-clang tool with Python fallback"""
-    
+
     def __init__(self):
         pass
-    
+
     def hipify_code(self, cuda_code: str) -> tuple[str, list[dict]]:
         """
         Try to run real hipify-clang if available.
@@ -24,18 +23,19 @@ class HipifyWrapper:
 
         # Fallback: Python pattern replacement
         return self._python_hipify(cuda_code)
-    
+
     def _hipify_available(self) -> bool:
         try:
             result = subprocess.run(
                 ["hipify-clang", "--version"],
-                capture_output=True, timeout=5
+                capture_output=True, timeout=5, check=False
             )
             return result.returncode == 0
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False
 
     def _run_real_hipify(self, cuda_code: str) -> tuple[str, list[dict]] | None:
+        tmp_path = None
         try:
             with tempfile.NamedTemporaryFile(suffix=".cu", mode="w", delete=False) as f:
                 f.write(cuda_code)
@@ -43,36 +43,41 @@ class HipifyWrapper:
 
             # Use -- separator to pass compiler flags to the internal Clang parser
             # This is critical for Clang-based tools to distinguish tool flags from compiler flags.
-            cmd = ["hipify-clang", tmp_path, "--", "-nocudalib", "-nocudainc", "-arch=sm_60"]
-            
+            cmd = ["hipify-clang", tmp_path, "--",
+                   "-nocudalib", "-nocudainc", "-arch=sm_60"]
+
             # Debug log for build engineering
             print(f"DEBUG: Running hipify-clang command: {' '.join(cmd)}")
-            
+
             # Set environment variable just in case hipify-clang invokes nvcc internally
             env = os.environ.copy()
             env['NVCC_APPEND_FLAGS'] = '-nocudalib -arch=sm_60'
-            
+
             result = subprocess.run(
                 cmd,
                 capture_output=True, text=True, timeout=30,
-                env=env
+                env=env,
+                check=False,
             )
 
             if result.returncode != 0:
-                print(f"DEBUG: hipify-clang failed with return code {result.returncode}")
+                print(
+                    f"DEBUG: hipify-clang failed with return code {result.returncode}")
                 print(f"DEBUG: stderr: {result.stderr}")
 
             if result.returncode == 0 and result.stdout:
-                changes = self._detect_changes(cuda_code, result.stdout, source="hipify-clang")
+                changes = self._detect_changes(
+                    cuda_code, result.stdout, source="hipify-clang")
                 return result.stdout, changes
 
             return None
-        except Exception:
+        except (OSError, subprocess.SubprocessError):
             return None
         finally:
             try:
-                os.unlink(tmp_path)
-            except Exception:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+            except OSError:
                 pass
 
     def _python_hipify(self, cuda_code: str) -> tuple[str, list[dict]]:

@@ -54,7 +54,7 @@ You'll receive results from each agent:
 - Always compare "Optimized ROCm vs Baseline HIP" (straight hipify output)
 - Never claim "faster than NVIDIA CUDA" - be honest and credible
 - Explain WHY AMD hardware advantages apply to this specific workload
-- Include controlled failure/recovery story if it happened
+- Include retry and recovery details only when regression actually occurred
 - Provide concrete, actionable insights
 
 Focus on demonstrating that your agents add real value beyond basic hipify - that's the core claim.
