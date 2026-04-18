@@ -852,6 +852,10 @@
       background: var(--bg);
     }
 
+    .dfs {
+      min-width: 0;
+    }
+
     @media (max-width: 780px) {
       .dg {
         grid-template-columns: 1fr;
@@ -903,24 +907,28 @@
       font-size: 12px;
       line-height: 1.7;
       overflow: auto;
-      max-height: 500px;
-      white-space: pre;
+      max-height: min(70vh, 760px);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      tab-size: 2;
       color: var(--t2);
     }
 
     .dlo {
-      background: rgba(255, 51, 68, 0.1);
+      background: rgba(255, 51, 68, 0.08);
       color: var(--red);
-      text-decoration: line-through;
       display: block;
-      width: 100%;
+      border-left: 2px solid rgba(255, 51, 68, 0.45);
+      padding-left: 8px;
     }
 
     .dln {
-      background: rgba(0, 255, 136, 0.1);
+      background: rgba(0, 255, 136, 0.08);
       color: var(--green);
       display: block;
-      width: 100%;
+      border-left: 2px solid rgba(0, 255, 136, 0.45);
+      padding-left: 8px;
     }
 
     /* Loading Skeleton */
@@ -1475,9 +1483,6 @@ __global__ void kernel(float* A, float* B, int N) {
 
   function rDiff(o, n) {
     if (!o || !n) return;
-    const oe = document.getElementById('d-o'), ne = document.getElementById('d-n');
-    if (oe && oe.innerHTML && ne && ne.innerHTML) return; // Already rendered
-
     document.getElementById('t-diff').innerHTML = `<div class="dg">
     <div class="dfs"><div class="dfh"><span class="dft cu">CUDA</span> Original Source</div><pre class="dfp" id="d-o"></pre></div>
     <div class="dfs"><div class="dfh"><span class="dft ro">ROCm</span> Optimized HIP</div><pre class="dfp" id="d-n"></pre></div>
@@ -1490,8 +1495,25 @@ __global__ void kernel(float* A, float* B, int N) {
       oH += `<span class="${c ? 'dlo' : ''}">${esc(a)}\n</span>`;
       nH += `<span class="${c ? 'dln' : ''}">${esc(b)}\n</span>`;
     }
-    document.getElementById('d-o').innerHTML = oH;
-    document.getElementById('d-n').innerHTML = nH;
+    const left = document.getElementById('d-o');
+    const right = document.getElementById('d-n');
+    left.innerHTML = oH;
+    right.innerHTML = nH;
+
+    // Keep both panes aligned while scrolling for easier comparison.
+    let syncing = false;
+    left.addEventListener('scroll', () => {
+      if (syncing) return;
+      syncing = true;
+      right.scrollTop = left.scrollTop;
+      syncing = false;
+    }, { passive: true });
+    right.addEventListener('scroll', () => {
+      if (syncing) return;
+      syncing = true;
+      left.scrollTop = right.scrollTop;
+      syncing = false;
+    }, { passive: true });
   }
 
   function sTimer() { S.iv = setInterval(() => { document.getElementById('pt').textContent = ((Date.now() - S.t0) / 1000).toFixed(1) + 's' }, 100) }
