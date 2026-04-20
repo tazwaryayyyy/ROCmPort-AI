@@ -1183,7 +1183,7 @@ __global__ void kernel(float* A, float* B, int N) {
   </div>
 
   <footer>
-    <div>ROCmPort AI — AMD Developer Hackathon 2025</div>
+    <div>ROCmPort AI</div>
     <div><a href="https://x.com/TazwarEnan" target="_blank">Tazwar Ahnaf Enan</a> · <a
         href="https://github.com/tazwaryayyyy" target="_blank">GitHub</a></div>
   </footer>
@@ -1541,9 +1541,34 @@ __global__ void kernel(float* A, float* B, int N) {
   async function exM() {
     if (!S.rep) return;
     try {
-      const res = await fetch(API + '/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ original_cuda: S.code, final_rocm: S.rep.optimized_code, migration_report: S.rep }) });
-      if (res.ok) { const a = document.createElement('a'); a.href = URL.createObjectURL(await res.blob()); a.download = 'rocmport-migration.zip'; a.click() }
-    } catch (e) { alert('Export error') }
+      const currentInput = document.getElementById('inp')?.value || '';
+      const payload = {
+        original_cuda: S.code || currentInput,
+        final_rocm: S.rep.optimized_code || '',
+        migration_report: S.rep
+      };
+      const res = await fetch(API + '/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        let msg = `Export failed (${res.status})`;
+        try {
+          const err = await res.json();
+          if (err && err.detail) msg = err.detail;
+        } catch (_) { }
+        throw new Error(msg);
+      }
+
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(await res.blob());
+      a.download = 'rocmport-migration.zip';
+      a.click();
+    } catch (e) {
+      alert('Export error: ' + (e.message || 'Unknown error'));
+    }
   }
 
   function tsm() {
