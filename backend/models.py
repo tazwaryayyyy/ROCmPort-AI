@@ -56,6 +56,24 @@ class CostEstimate(BaseModel):
     complexity_factor: str  # Low | Medium | High
 
 
+class RiskItem(BaseModel):
+    """One flagged pattern found by the pure-Python static scanner."""
+    line: Optional[int] = None          # 1-indexed source line, None if not determinable
+    pattern: str                        # The matched text / pattern name
+    risk_level: str                     # CRITICAL | HIGH | MEDIUM
+    description: str                    # Human-readable explanation
+    amd_fix_hint: str                   # Concrete fix for AMD wavefront-64
+
+
+class StaticRiskReport(BaseModel):
+    """Aggregated output of the static wavefront correctness scanner."""
+    items: List[RiskItem]
+    critical_count: int
+    high_count: int
+    medium_count: int
+    scan_duration_ms: float             # Transparency: shows this runs in <5ms
+
+
 class AnalyzerResult(BaseModel):
     kernels_found: List[str]
     cuda_apis: List[str]
@@ -68,6 +86,7 @@ class AnalyzerResult(BaseModel):
     prediction: Optional[str] = None  # 🧠 Prediction field
     line_count: Optional[int] = None
     complexity_score: Optional[int] = None
+    static_risk_report: Optional[StaticRiskReport] = None
 
 
 class TranslatorResult(BaseModel):
@@ -94,6 +113,7 @@ class TesterResult(BaseModel):
     notes: str
     # Trust layer verification
     verification: Optional[VerificationResult] = None
+    data_source: Optional[str] = None
 
 
 class FinalReport(BaseModel):
@@ -110,3 +130,7 @@ class FinalReport(BaseModel):
     cost_estimate: Optional[CostEstimate] = None  # 💰 Cost impact estimator
     # For "Explain Like I'm 5" mode
     simplified_explanation: Optional[str] = None
+    # Static risk data surfaced in final report
+    static_risk_report: Optional[StaticRiskReport] = None
+    # Data provenance: real_rocm | demo_artifact | simulated
+    data_source: str = "simulated"

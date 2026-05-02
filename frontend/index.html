@@ -1114,6 +1114,93 @@
       font-weight: 500;
       min-height: 100px;
     }
+
+    /* Data source badge */
+    .ds-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 4px;
+      margin-left: 12px;
+      vertical-align: middle;
+    }
+    .ds-badge.real {
+      background: rgba(0,255,136,0.15);
+      color: var(--green);
+      border: 1px solid rgba(0,255,136,0.3);
+    }
+    .ds-badge.demo {
+      background: rgba(255,204,0,0.12);
+      color: var(--yellow);
+      border: 1px solid rgba(255,204,0,0.3);
+    }
+    .ds-badge.sim {
+      background: rgba(255,255,255,0.06);
+      color: var(--muted);
+      border: 1px solid var(--b1);
+    }
+
+    /* Risk matrix panel */
+    .risk-panel {
+      margin: 0 24px 24px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--b1);
+    }
+    .risk-header {
+      background: rgba(255,255,255,0.03);
+      padding: 10px 16px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid var(--b1);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .risk-badge {
+      font-size: 9px;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .risk-badge.crit { background: rgba(255,51,68,0.2); color: var(--red); }
+    .risk-badge.high { background: rgba(255,153,0,0.2); color: #ff9900; }
+    .risk-badge.med  { background: rgba(255,204,0,0.2); color: var(--yellow); }
+    .risk-row {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      display: grid;
+      grid-template-columns: 70px 1fr auto;
+      gap: 12px;
+      align-items: start;
+      font-size: 12px;
+      transition: background 0.2s;
+    }
+    .risk-row:last-child { border-bottom: none; }
+    .risk-row:hover { background: rgba(255,255,255,0.02); }
+    .risk-loc {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      padding-top: 1px;
+    }
+    .risk-desc { color: var(--t2); line-height: 1.5; }
+    .risk-hint {
+      font-size: 10px;
+      color: var(--cyan);
+      margin-top: 4px;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <div id="cursor"></div>
@@ -1421,12 +1508,21 @@ __global__ void kernel(float* A, float* B, int N) {
     const v = r.verification || {}, bw = r.bandwidth_utilized;
     const dot = ok => `<div class="sum-dot ${ok === true ? 'ok' : ok === false ? 'no' : 'na'}"></div>`;
 
+    // Data source badge
+    const ds = r.data_source || 'simulated';
+    const dsBadge = ds === 'real_rocm'
+      ? `<span class="ds-badge real">🟢 LIVE MI300X</span>`
+      : ds === 'demo_artifact'
+      ? `<span class="ds-badge demo">🟡 DEMO DATA</span>`
+      : `<span class="ds-badge sim">⚪ SIMULATED</span>`;
+
     document.getElementById('t-sum').innerHTML = `
     <div class="sum-row">
       <div class="sum-big">
         ${r.speedup}x
+        ${dsBadge}
         <span class="u">vs baseline hipify</span>
-        <span class="vic">Measured against declared baseline.</span>
+        <span class="vic">Measured against declared baseline. ${ds === 'demo_artifact' ? 'Representative MI300X values — set ROCM_AVAILABLE=true for real numbers.' : ds === 'real_rocm' ? 'Real rocprof measurement on AMD MI300X.' : 'Set ROCM_AVAILABLE=true on AMD Cloud for real numbers.'}</span>
       </div>
       <div class="sum-sep"></div>
       <div>
@@ -1446,7 +1542,8 @@ __global__ void kernel(float* A, float* B, int N) {
     <div class="sn" id="sn" style="margin: 24px; border-left-width: 4px;">
       <div style="font-weight: bold; margin-bottom: 8px; color: var(--cyan);">🧠 Simple explanation</div>
       ${r.simplified_explanation ? esc(r.simplified_explanation) : '<em>Simplified explanation will appear here</em>'}
-    </div>`;
+    </div>
+    ${riskMatrix(r.static_risk_report)}`;
 
     // Details tab
     let dh = `<div class="dm">
@@ -1479,6 +1576,41 @@ __global__ void kernel(float* A, float* B, int N) {
         b.style.width = b.dataset.w;
       });
     }, 100);
+  }
+
+  function riskMatrix(srr) {
+    if (!srr || !srr.items || srr.items.length === 0) return '';
+
+    const levelClass = { CRITICAL: 'crit', HIGH: 'high', MEDIUM: 'med' };
+    const critical = srr.critical_count || 0;
+    const high = srr.high_count || 0;
+    const medium = srr.medium_count || 0;
+
+    let rows = srr.items.map(item => {
+      const cls = levelClass[item.risk_level] || 'med';
+      const loc = item.line ? `line ${item.line}` : '—';
+      return `<div class="risk-row">
+        <div class="risk-loc">${esc(loc)}</div>
+        <div>
+          <div class="risk-desc">${esc(item.description)}</div>
+          <div class="risk-hint">Fix: ${esc(item.amd_fix_hint)}</div>
+        </div>
+        <div><span class="risk-badge ${cls}">${esc(item.risk_level)}</span></div>
+      </div>`;
+    }).join('');
+
+    const scanMs = srr.scan_duration_ms != null ? `${srr.scan_duration_ms.toFixed(1)}ms` : '';
+
+    return `<div class="risk-panel">
+      <div class="risk-header">
+        ⚠️ Static Risk Scan
+        ${critical > 0 ? `<span class="risk-badge crit">${critical} CRITICAL</span>` : ''}
+        ${high > 0 ? `<span class="risk-badge high">${high} HIGH</span>` : ''}
+        ${medium > 0 ? `<span class="risk-badge med">${medium} MEDIUM</span>` : ''}
+        <span style="margin-left:auto;font-size:9px;opacity:0.5">Pure-Python pre-scan · ${scanMs}</span>
+      </div>
+      ${rows}
+    </div>`;
   }
 
   function rDiff(o, n) {

@@ -44,7 +44,54 @@ app.add_middleware(
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "ROCmPort AI"}
+    from backend.agents.analyzer import llm_client
+    return {
+        "status": "ok",
+        "service": "ROCmPort AI",
+        "llm_provider": llm_client.get_model_info(),
+        "rocm_available": os.environ.get("ROCM_AVAILABLE", "false").lower() == "true",
+    }
+
+
+@app.get("/benchmark-report")
+async def benchmark_report():
+    """
+    Returns a fully auditable benchmark report with:
+    - Per-kernel deterministic performance data (data_source labelled)
+    - Static risk scan results for each demo kernel
+    - Hardware context and reproducibility instructions
+    - LLM provider information
+
+    Judges can use this endpoint to audit every metric shown in the UI.
+    """
+    from backend.tools.demo_artifacts import get_benchmark_summary
+    from backend.tools import static_analyzer
+    from backend.agents.analyzer import llm_client
+    import os
+
+    kernels_dir = os.path.join(os.path.dirname(__file__), "demo_kernels")
+    summary = get_benchmark_summary()
+
+    # Attach static risk scan for each demo kernel
+    kernel_risk_scans = {}
+    for fname in os.listdir(kernels_dir):
+        if fname.endswith(".cu"):
+            kname = fname.replace(".cu", "")
+            with open(os.path.join(kernels_dir, fname), encoding="utf-8") as f:
+                cuda_code = f.read()
+            report = static_analyzer.scan(cuda_code)
+            kernel_risk_scans[kname] = {
+                "critical_count": report.critical_count,
+                "high_count": report.high_count,
+                "medium_count": report.medium_count,
+                "scan_duration_ms": report.scan_duration_ms,
+                "items": [item.model_dump() for item in report.items],
+            }
+
+    summary["static_risk_scans"] = kernel_risk_scans
+    summary["llm_provider"] = llm_client.get_model_info()
+
+    return summary
 
 
 @app.post("/port")

@@ -127,28 +127,22 @@ class RocprofWrapper:
                 'execution_time_ms': 0
             }
 
-    def get_mock_profiling_data(self) -> Dict:
-        """Public accessor for mock profiling data used by testing layer."""
-        return self._get_mock_profiling_data()
+    def get_mock_profiling_data(self, kernel_name: str = "custom", iteration: int = 1) -> Dict:
+        """Public accessor for deterministic demo profiling data used by testing layer."""
+        return self._get_demo_profiling_data(kernel_name, iteration)
 
-    def _get_mock_profiling_data(self) -> Dict:
-        """Generate mock profiling data for testing without ROCm"""
-        import random
+    def _get_demo_profiling_data(self, kernel_name: str = "custom", iteration: int = 1) -> Dict:
+        """
+        Return deterministic per-kernel demo profiling data.
 
-        baseline_ms = 100.0
-        execution_time = random.uniform(85.0, 115.0)
-        bandwidth = random.uniform(35.0, 90.0)
-        utilization = random.uniform(55.0, 92.0)
-
-        return {
-            'success': True,
-            'execution_time_ms': execution_time,
-            'baseline_time_ms': baseline_ms,
-            'memory_bandwidth_gbps': bandwidth,
-            'gpu_utilization_percent': utilization,
-            'sq_waves': random.randint(800, 1200),
-            'simulated': True
-        }
+        Replaces random.uniform() with representative MI300X values keyed by kernel name
+        and iteration number. Every entry is tagged with data_source so the caller and
+        the UI can show an honest provenance badge instead of fabricated numbers.
+        """
+        from .demo_artifacts import get_demo_data
+        data = get_demo_data(kernel_name, iteration)
+        data['success'] = True
+        return data
 
     def get_hardware_info(self) -> Dict:
         """Get AMD GPU hardware information"""

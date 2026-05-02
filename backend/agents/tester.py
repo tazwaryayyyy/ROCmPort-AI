@@ -2,6 +2,7 @@ import os
 import hashlib
 from ..models import TesterResult, AnalyzerResult, VerificationResult
 from ..tools.rocprof_wrapper import RocprofWrapper
+from ..tools.demo_artifacts import get_demo_data, get_kernel_baselines
 
 # Set ROCM_AVAILABLE=true on AMD Cloud
 ROCM_AVAILABLE = os.environ.get("ROCM_AVAILABLE", "false").lower() == "true"
@@ -17,10 +18,9 @@ DEMO_KERNEL_CHECKSUMS = {
 
 
 def compute_code_checksum(code_text: str, sample_size: int = 400) -> str:
-    """Compute a short checksum from code text for traceability in mock mode."""
+    """Compute a short checksum from code text for traceability in demo mode."""
     if not code_text:
         return "empty"
-
     sample = code_text[:sample_size]
     return hashlib.sha256(sample.encode()).hexdigest()[:32]
 
@@ -30,8 +30,8 @@ def verify_demo_kernel(kernel_name: str, optimized_code: str) -> VerificationRes
     expected = DEMO_KERNEL_CHECKSUMS.get(kernel_name, "mock_checksum")
     actual = compute_code_checksum(optimized_code)
 
-    # In mock mode, indicate this is simulated verification
-    is_mock = not ROCM_AVAILABLE
+    # In demo mode, indicate this is simulated verification
+    is_demo = not ROCM_AVAILABLE
 
     verification = VerificationResult(
         compiled_successfully=True,
@@ -39,11 +39,11 @@ def verify_demo_kernel(kernel_name: str, optimized_code: str) -> VerificationRes
         output_matches_expected=actual == expected,
         expected_checksum=expected,
         actual_checksum=actual,
-        mock_mode=is_mock
+        mock_mode=is_demo
     )
 
-    # Do not fabricate pass/fail in mock mode. Surface that verification is simulated.
-    if is_mock:
+    # Do not fabricate pass/fail in demo mode. Surface that verification is simulated.
+    if is_demo:
         verification.output_matches_expected = False
         verification.checksum_computed = actual
 
@@ -53,8 +53,8 @@ def verify_demo_kernel(kernel_name: str, optimized_code: str) -> VerificationRes
 def run(optimized_code: str, analyzer_result: AnalyzerResult,
         iteration: int = 1, kernel_name: str = "matrix_multiply") -> TesterResult:
     """
-    On AMD Cloud (ROCM_AVAILABLE=true): runs real hipcc + rocprof
-    Locally: returns mock profiling results labeled as simulated.
+    On AMD Cloud (ROCM_AVAILABLE=true): runs real hipcc + rocprof.
+    Locally: returns deterministic demo artifact data labelled with data_source.
     """
     rocprof_wrapper = RocprofWrapper()
 
@@ -66,13 +66,21 @@ def run(optimized_code: str, analyzer_result: AnalyzerResult,
     if ROCM_AVAILABLE:
         return _run_real(optimized_code, analyzer_result, iteration, rocprof_wrapper, verification)
     else:
-        # In non-ROCm environments, run_with_profiling returns simulated metrics.
-        profiling_data = rocprof_wrapper.run_with_profiling("mock_executable")
-        return _convert_profiling_to_tester_result(profiling_data, analyzer_result, iteration, verification)
+        # Use deterministic demo artifact data keyed by kernel name + iteration
+        profiling_data = rocprof_wrapper.get_mock_profiling_data(kernel_name, iteration)
+        return _convert_profiling_to_tester_result(
+            profiling_data, analyzer_result, iteration, verification, kernel_name
+        )
 
 
-def _convert_profiling_to_tester_result(profiling_data: dict, analyzer_result: AnalyzerResult, iteration: int, verification: VerificationResult = None) -> TesterResult:
-    """Convert RocprofWrapper output to TesterResult format"""
+def _convert_profiling_to_tester_result(
+    profiling_data: dict,
+    analyzer_result: AnalyzerResult,
+    iteration: int,
+    verification: VerificationResult = None,
+    kernel_name: str = "custom",
+) -> TesterResult:
+    """Convert RocprofWrapper output to TesterResult format."""
     if not profiling_data.get('success', False):
         return TesterResult(
             success=False,
@@ -82,26 +90,38 @@ def _convert_profiling_to_tester_result(profiling_data: dict, analyzer_result: A
             execution_ms=0.0,
             bottleneck="profiling-error",
             notes=profiling_data.get('error', 'Unknown profiling error'),
+            data_source="error",
             verification=verification
         )
 
     exec_ms = profiling_data.get('execution_time_ms', 0.0)
     bandwidth = profiling_data.get('memory_bandwidth_gbps', 0.0)
+    data_source = profiling_data.get('data_source', 'simulated')
 
-    baseline_ms = profiling_data.get('baseline_time_ms', 100.0)
+    # Use kernel-specific baseline — not a hardcoded 100ms
+    baselines = get_kernel_baselines()
+    baseline_ms = baselines.get(kernel_name, profiling_data.get('baseline_time_ms', 100.0))
+
     if exec_ms > 0:
         speedup = round(baseline_ms / exec_ms, 2)
     else:
         speedup = 0.0
 
-    if speedup < 1.0:
-        notes = "Simulated profile indicates regression vs baseline. Retry with an alternative optimization strategy."
-    elif speedup < 1.1:
-        notes = "Simulated profile indicates marginal improvement. Optimization may be memory- or launch-bound."
-    else:
-        notes = "Simulated profile indicates improvement vs baseline after optimization."
+    # Pull notes from the demo artifact (already contains useful context)
+    notes = profiling_data.get('notes', '')
 
-    notes += " Mock mode is enabled (ROCM_AVAILABLE=false); use real ROCm hardware for authoritative numbers."
+    # Append a clear data-source label when not running real hardware
+    if data_source == "demo_artifact":
+        notes += (
+            "\n\n[DATA SOURCE: demo_artifact] These metrics are representative of MI300X "
+            "performance for this kernel class. Set ROCM_AVAILABLE=true on AMD Developer "
+            "Cloud for authoritative numbers."
+        )
+    elif data_source == "simulated":
+        notes += (
+            "\n\n[DATA SOURCE: simulated] Unknown kernel type — conservative estimate used. "
+            "Set ROCM_AVAILABLE=true on AMD Developer Cloud for real measurements."
+        )
 
     return TesterResult(
         success=True,
@@ -111,11 +131,18 @@ def _convert_profiling_to_tester_result(profiling_data: dict, analyzer_result: A
         execution_ms=exec_ms,
         bottleneck=analyzer_result.workload_type.value,
         notes=notes,
+        data_source=data_source,
         verification=verification
     )
 
 
-def _run_real(code: str, analyzer_result: AnalyzerResult, iteration: int, rocprof_wrapper: RocprofWrapper, verification: VerificationResult = None) -> TesterResult:
+def _run_real(
+    code: str,
+    analyzer_result: AnalyzerResult,
+    iteration: int,
+    rocprof_wrapper: RocprofWrapper,
+    verification: VerificationResult = None,
+) -> TesterResult:
     """Real hipcc + rocprof execution on MI300X."""
     # Compile the code
     success, message = rocprof_wrapper.compile_hip_code(code)
@@ -129,6 +156,7 @@ def _run_real(code: str, analyzer_result: AnalyzerResult, iteration: int, rocpro
             execution_ms=0.0,
             bottleneck="compilation-failed",
             notes=f"Compilation failed: {message}",
+            data_source="real_rocm",
             verification=verification
         )
 
@@ -145,12 +173,13 @@ def _run_real(code: str, analyzer_result: AnalyzerResult, iteration: int, rocpro
             execution_ms=0.0,
             bottleneck="profiling-failed",
             notes=f"Profiling failed: {profiling_data.get('error', 'Unknown error')}",
+            data_source="real_rocm",
             verification=verification
         )
 
     exec_ms = profiling_data.get('execution_time_ms', 0.0)
     bandwidth = profiling_data.get('memory_bandwidth_gbps', 0.0)
-    speedup = _calculate_speedup(exec_ms)
+    speedup = _calculate_speedup_real(exec_ms, profiling_data)
 
     return TesterResult(
         success=True,
@@ -159,13 +188,15 @@ def _run_real(code: str, analyzer_result: AnalyzerResult, iteration: int, rocpro
         bandwidth_utilized=min(bandwidth, 95.0),
         execution_ms=exec_ms,
         bottleneck=analyzer_result.workload_type.value,
-        notes="Real MI300X benchmark via rocprof"
+        notes="Real MI300X benchmark via rocprof",
+        data_source="real_rocm",
+        verification=verification,
     )
 
 
-def _calculate_speedup(exec_ms: float) -> float:
-    """Estimate speedup relative to baseline HIP."""
+def _calculate_speedup_real(exec_ms: float, profiling_data: dict) -> float:
+    """Estimate speedup relative to baseline HIP using the profiler's baseline reading."""
     if exec_ms <= 0:
         return 0.0
-    baseline_ms = 100.0
+    baseline_ms = profiling_data.get('baseline_time_ms', 100.0)
     return round(baseline_ms / exec_ms, 2)

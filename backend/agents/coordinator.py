@@ -302,6 +302,8 @@ async def run_pipeline(
         hip_code=translator_result.hip_code,
         optimized_code=final_optimizer.optimized_code,
         verification=tester_result_final.verification,
+        static_risk_report=analyzer_result.static_risk_report,
+        data_source=tester_result_final.data_source or "simulated",
     )
     simplified_explanation = simplify_explanation(temp_report)
 
@@ -319,6 +321,8 @@ async def run_pipeline(
         verification=tester_result_final.verification,
         cost_estimate=cost_estimate,
         simplified_explanation=simplified_explanation,
+        static_risk_report=analyzer_result.static_risk_report,
+        data_source=tester_result_final.data_source or "simulated",
     )
 
     yield AgentEvent(
