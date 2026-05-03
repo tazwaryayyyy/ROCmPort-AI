@@ -44,14 +44,14 @@ class HipifyWrapper:
             # Use -- separator to pass compiler flags to the internal Clang parser
             # This is critical for Clang-based tools to distinguish tool flags from compiler flags.
             cmd = ["hipify-clang", tmp_path, "--",
-                   "-nocudalib", "-nocudainc", "-arch=sm_60"]
+                   "-nocudalib", "-nocudainc"]
 
             # Debug log for build engineering
             print(f"DEBUG: Running hipify-clang command: {' '.join(cmd)}")
 
             # Set environment variable just in case hipify-clang invokes nvcc internally
             env = os.environ.copy()
-            env['NVCC_APPEND_FLAGS'] = '-nocudalib -arch=sm_60'
+            env['NVCC_APPEND_FLAGS'] = '-nocudalib'
 
             result = subprocess.run(
                 cmd,

@@ -27,14 +27,14 @@ class RocprofWrapper:
             if output_file is None:
                 output_file = temp_file.replace('.hip', '.out')
 
-            # Add -nocudalib and -arch=sm_60 to solve "Cannot find libdevice for sm_52" error
+            # Add  and --offload-arch=gfx942 to solve "Cannot find libdevice for sm_52" error
             # This ensures compilation works even if CUDA device libraries are missing.
             cmd = [self.hipcc_path, '-o', output_file,
-                   temp_file, '-nocudalib', '-arch=sm_60']
+                   temp_file, '--offload-arch=gfx942']
 
             # Set environment variable just in case hipcc invokes nvcc internally
             env = os.environ.copy()
-            env['NVCC_APPEND_FLAGS'] = '-nocudalib -arch=sm_60'
+            env['NVCC_APPEND_FLAGS'] = ' --offload-arch=gfx942'
 
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=60, env=env, check=False)
