@@ -113,6 +113,21 @@ At least one failure path is documented with source, output, root cause, and fix
 
 This is intentional: credibility improves when the system's failure boundary is visible.
 
+## LLM Configuration
+
+| Agent | Model | Why |
+|-------|-------|-----|
+| Analyzer | Qwen2.5-Coder-32B | Purpose-built for code reasoning |
+| Translator | Qwen2.5-Coder-32B | Best-in-class CUDA/HIP translation |
+| Optimizer | Qwen2.5-Coder-32B | Hardware-aware optimization proposals |
+| Tester | llama-3.3-70b | Fast log parsing, cost-efficient fallback |
+
+**Primary**: Qwen2.5-Coder-32B via HuggingFace Inference API  
+**Production**: Qwen2.5-Coder-32B via vLLM on AMD MI300X DevCloud  
+**Estimated cost**: ~$0.003 per kernel migration (8K tokens avg)
+
+---
+
 ## Quick Start
 
 ### Option 1: Startup Script
