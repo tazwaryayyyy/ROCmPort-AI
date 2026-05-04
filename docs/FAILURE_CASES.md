@@ -36,3 +36,23 @@ __device__ __forceinline__ unsigned lane_id() {
 
 ### Trust note
 This is a deliberate example of where ROCmPort AI should report risk, not pretend full automation.
+
+## Failure Case: Library-Heavy CUDA Code (CUB, Thrust, cuDNN)
+
+**Input type**: CUDA kernels that call into CUB, Thrust, or cuDNN directly
+
+**Example pattern**:
+```cpp
+#include <cub/cub.cuh>
+cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, d_in, d_out, num_items);
+```
+
+**What happens**: hipify-clang renames the include to `<hipcub/hipcub.hpp>` and the namespace to `hipcub`. ROCmPort AI passes this through. The translation is mechanically correct.
+
+**The limitation**: hipCUB API coverage is not 1:1 with CUB. Some primitives behave differently under ROCm, and performance characteristics differ significantly due to wavefront width. ROCmPort AI does not currently benchmark library calls against rocPRIM equivalents.
+
+**What ROCmPort AI does**: flags the library dependency in the static scan, marks it HIGH risk, and recommends manual review by a ROCm-experienced engineer.
+
+**What ROCmPort AI does not do**: guarantee correctness or performance parity for library-heavy code without human validation.
+
+**Fix requirement**: Manual comparison of CUB vs hipCUB primitive behavior for the specific use case, or replacement with rocPRIM equivalents.

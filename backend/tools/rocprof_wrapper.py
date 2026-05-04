@@ -56,7 +56,7 @@ class RocprofWrapper:
         """Run executable with rocprof profiling"""
         if not self.rocm_available:
             # Return mock profiling data
-            return self._get_mock_profiling_data()
+            return self.get_mock_profiling_data()
 
         try:
             if args is None:

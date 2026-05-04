@@ -233,9 +233,26 @@ A basic weekend clone can chain hipify and an LLM. The differentiator is reliabl
 | Backend unavailable | Verify FastAPI server is running on port `8000`. |
 | No improvement observed | Re-check baseline definition, kernel size, and profiler counters. |
 
-## License
 
-See `LICENSE`.
+## Why Not Just Use hipify?
+
+hipify-clang is AMD's official translation tool. ROCmPort AI uses it as a first pass. The problem is what hipify cannot catch.
+
+**The reduction kernel example:**
+
+hipify successfully translates `reduction.cu` — it compiles, it runs, it returns a result. No errors. But the result is silently wrong on AMD hardware.
+
+The root cause: line 59 assumes `warpSize=32` in the final unrolled reduction stage. On AMD, wavefront size is 64. Lanes 32–63 are skipped entirely in the final summation. The output looks plausible but is numerically incorrect.
+
+hipify has no knowledge of this. It performs mechanical API renaming. It cannot reason about hardware architecture assumptions baked into kernel logic.
+
+ROCmPort AI catches this before execution:
+
+- Static scanner flags line 59 as CRITICAL risk: "hardcoded warp-32 conditional — assumes NVIDIA warpSize=32. On AMD wavefront=64 this silently skips lanes 32–63"
+- LLM correction pass rewrites the final reduction stage to be wavefront-64 aware
+- Compiler + rocprof verification confirms the fix compiles and executes correctly on gfx942
+
+This is the gap between "it compiles" and "it is correct."
 
 ## ✅ Live Results on AMD Instinct MI300X
 
@@ -249,3 +266,7 @@ All demo kernels migrated, compiled, and profiled on real MI300X hardware (AMD D
 | convolution_2d | 13 | warp-32 + LDS padding | ✅ Compiled |
 
 `data_source: real_rocm` — verified on AMD DevCloud MI300X instance.
+
+## License
+
+See `LICENSE`.

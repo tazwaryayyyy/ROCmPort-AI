@@ -24,15 +24,15 @@ def calculate_cost_estimate(analyzer_result: AnalyzerResult) -> CostEstimate:
 
     if complexity <= 3:
         manual_weeks = "1-2 weeks"
-        savings = "$5,000-$10,000"
+        savings = f"~{complexity * 5}-{complexity * 10} eng-days × team rate (complexity {complexity}/10)"
         factor = "Low"
     elif complexity <= 7:
         manual_weeks = "3-6 weeks"
-        savings = "$20,000-$50,000"
+        savings = f"~{complexity * 5}-{complexity * 10} eng-days × team rate (complexity {complexity}/10)"
         factor = "Medium"
     else:
         manual_weeks = "6-10 weeks"
-        savings = "$50,000-$100,000"
+        savings = f"~{complexity * 5}-{complexity * 10} eng-days × team rate (complexity {complexity}/10)"
         factor = "High"
 
     return CostEstimate(
@@ -77,8 +77,6 @@ async def run_pipeline(
     simple_mode: bool = False,
 ) -> AsyncGenerator[AgentEvent, None]:
     """Run full pipeline and stream AgentEvent objects."""
-    _ = simple_mode
-
     yield AgentEvent(
         agent="analyzer",
         status=AgentStatus.RUNNING,
