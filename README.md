@@ -6,7 +6,8 @@ It is an acceleration system for migration work, not a one-click replacement for
 
 ## Live Demo
 
-- https://rocmport-ai.onrender.com
+-  **Backend Demo**: https://rocmport-ai.onrender.com
+-  **HuggingFace Space**: https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/ROCmPort-AI
 
 ## What This Project Is
 
