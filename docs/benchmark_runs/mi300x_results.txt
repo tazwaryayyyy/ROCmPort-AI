@@ -1,0 +1,17 @@
+Hardware: AMD Instinct MI300X VF (gfx942)
+ROCm: 7.2
+Date: 2025-05-06
+Compiler: hipcc --offload-arch=gfx942 -O3
+
+matrix_multiply (512x512 fp32):
+  Basic kernel:        0.068 ms
+  Shared memory kernel: 0.026 ms
+  Speedup:             2.61x
+
+reduction (16M elements fp32):
+  Kernel time:         0.019 ms
+  Correctness:         PASS (16777216 == 16777216)
+
+vector_add (32M elements fp32):
+  Kernel time:         0.099 ms
+  Memory bandwidth:    4077.6 GB/s (77% of MI300X peak 5.3 TB/s)

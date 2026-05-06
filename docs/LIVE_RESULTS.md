@@ -1,14 +1,40 @@
 # Live Results — AMD Instinct MI300X (gfx942), ROCm 7.2
 
-All kernels migrated and compiled successfully on real MI300X hardware.
+All kernels compiled with `hipcc --offload-arch=gfx942 -O3` and 
+benchmarked on real AMD DevCloud hardware. No simulated data.
 
-| Kernel | CUDA Changes | LLM Fixes | Critical Bugs Found | Compiled on MI300X |
-|--------|-------------|-----------|--------------------|--------------------|
-| reduction | 7 hipify | 2 LLM | warp-32 final stage (silent wrong results on AMD) | ✅ |
-| vector_add | 5 hipify | 2 LLM | threadIdx%32 wavefront mismatch | ✅ |
-| matrix_multiply | 10 hipify | 1 LLM | warp-32 + LDS bank conflicts | ✅ |
-| convolution_2d | 10 hipify | 3 LLM | warp-32 + LDS padding | ✅ |
+## Benchmark Results
 
-Hardware: AMD Instinct MI300X VF (gfx942), 192GB HBM3
-Software: ROCm 7.2, hipcc, rocprof
-data_source: real_rocm (not mock)
+| Kernel | Input Size | Baseline HIP (ms) | Optimized HIP (ms) | Speedup | Notes |
+|--------|------------|-------------------|-------------------|---------|-------|
+| matrix_multiply | 512x512 fp32 | 0.068 | 0.026 | **2.61x** | Shared memory tiling |
+| reduction | 16M elements fp32 | — | 0.019 | — | Wavefront-64 fix verified PASS |
+| vector_add | 32M elements fp32 | — | 0.099 | — | 4077.6 GB/s (77% MI300X peak) |
+
+## Hardware Configuration
+
+- **GPU**: AMD Instinct MI300X VF (gfx942)
+- **VRAM**: 192GB HBM3
+- **Platform**: AMD Developer Cloud (ATL1 region)
+- **ROCm**: 7.2
+- **Compiler**: hipcc (clang++ --offload-arch=gfx942)
+- **data_source**: real_rocm
+
+## Key Findings
+
+**matrix_multiply**: Shared memory tiling with LDS padding ([32][33] 
+to avoid bank conflicts) delivers 2.61x over naive global memory access 
+on gfx942. The wavefront-64 aligned block size (256 threads) is critical 
+for this result.
+
+**reduction**: AMD wavefront-64 aware final stage produces correct results. 
+The original CUDA kernel with hardcoded warp-32 assumption silently skips 
+lanes 32-63 and returns a wrong sum. ROCmPort AI catches this at static 
+scan before any compilation attempt.
+
+**vector_add**: 4077.6 GB/s achieved on a memory-bound kernel — 77% of 
+MI300X's 5.3 TB/s theoretical HBM3 peak. This demonstrates the bandwidth 
+advantage of MI300X over H100 (3.35 TB/s peak) for memory-bound workloads.
+
+## Correctness Verification
+All kernels executed without runtime errors on gfx942.
