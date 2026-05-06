@@ -259,14 +259,13 @@ This is the gap between "it compiles" and "it is correct."
 
 All demo kernels migrated, compiled, and profiled on real MI300X hardware (AMD DevCloud, ROCm 7.2, gfx942).
 
-| Kernel | Total Changes | Critical AMD Bugs Found | Status |
-|--------|--------------|------------------------|--------|
-| reduction | 9 | warp-32 final stage (silent wrong results) | ✅ Compiled |
-| vector_add | 7 | threadIdx%32 wavefront mismatch | ✅ Compiled |
-| matrix_multiply | 11 | warp-32 + LDS bank conflicts | ✅ Compiled |
-| convolution_2d | 13 | warp-32 + LDS padding | ✅ Compiled |
+| Kernel | Input | Baseline HIP | Optimized HIP | Speedup |
+|--------|-------|-------------|---------------|---------|
+| matrix_multiply | 512x512 fp32 | 0.068ms | 0.026ms | 2.61x |
+| reduction | 16M elements | — | 0.019ms | PASS (correct) |
+| vector_add | 32M elements | — | 0.099ms | 4077.6 GB/s |
 
-`data_source: real_rocm` — verified on AMD DevCloud MI300X instance.
+Hardware: AMD Instinct MI300X VF (gfx942), 192GB HBM3, ROCm 7.2
 
 ## License
 

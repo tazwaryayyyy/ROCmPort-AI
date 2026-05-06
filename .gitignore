@@ -25,6 +25,11 @@ backend/.env
 mock_rocprof_output.json
 *.db
 
+# Node
+node_modules/
+frontend/dist/
+frontend/.env.local
+
 # OS junk
 .DS_Store
 Thumbs.db

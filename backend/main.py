@@ -2,7 +2,7 @@
 
 from backend.agents.analyzer import AnalyzerResult, WorkloadType
 from backend.agents.tester import run as run_tester
-from backend.agents.coordinator import run_pipeline
+from backend.graph.pipeline import pipeline as migration_pipeline
 from backend.models import PortRequest, ColdStartRequest, AggregateMetricsRequest
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
@@ -97,29 +97,61 @@ async def benchmark_report():
 @app.post("/port")
 async def port_cuda_code(req: PortRequest):
     """
-    Main endpoint. Streams SSE events as the agent pipeline runs.
-    Each event is a JSON AgentEvent object.
+    Main endpoint. Streams SSE events as the LangGraph pipeline runs.
+    Each event is a JSON object matching the AgentEvent schema.
     """
     if not req.cuda_code or len(req.cuda_code.strip()) < 10:
         raise HTTPException(status_code=400, detail="No CUDA code provided")
 
-    async def event_stream():
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def _run_graph():
+        initial_state = {
+            "cuda_code": req.cuda_code,
+            "kernel_name": req.kernel_name or "custom",
+            "simple_mode": req.simple_mode or False,
+            "analyzer_result": None,
+            "translator_result": None,
+            "optimizer_result": None,
+            "tester_result": None,
+            "iteration": 0,
+            "max_iterations": 3,
+            "should_retry": False,
+            "migration_success": False,
+            "final_report": {},
+            "events": [],
+        }
         try:
-            async for event in run_pipeline(req.cuda_code, req.kernel_name or "custom", req.simple_mode or False):
-                data = json.dumps(event.model_dump())
-                yield f"data: {data}\n\n"
-                # Let the client breathe between events
-                await asyncio.sleep(0.05)
-        except Exception as e:
-            error_event = {
-                "agent": "coordinator",
-                "status": "failed",
-                "message": "Pipeline error",
-                "detail": str(e)
-            }
-            yield f"data: {json.dumps(error_event)}\n\n"
+            async for chunk in migration_pipeline.astream(
+                initial_state, stream_mode="updates"
+            ):
+                for _node_name, node_output in chunk.items():
+                    for event in node_output.get("events", []):
+                        await queue.put(event)
+                        await asyncio.sleep(0.05)  # let client breathe
+        except Exception as exc:
+            await queue.put(
+                {
+                    "agent": "coordinator",
+                    "status": "failed",
+                    "message": "Pipeline error",
+                    "detail": str(exc),
+                }
+            )
         finally:
-            yield "data: [DONE]\n\n"
+            await queue.put(None)  # sentinel
+
+    async def event_stream():
+        task = asyncio.create_task(_run_graph())
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    yield "data: [DONE]\n\n"
+                    break
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            task.cancel()
 
     return StreamingResponse(
         event_stream(),
@@ -127,23 +159,44 @@ async def port_cuda_code(req: PortRequest):
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
-        }
+        },
     )
 
 
 async def _collect_pipeline_events(cuda_code: str, kernel_name: str, simple_mode: bool = False) -> tuple[list[dict], dict | None]:
-    """Collect all pipeline events and extract final report payload when present."""
+    """Collect all pipeline events via LangGraph and extract the final report."""
     events: list[dict] = []
     final_report = None
 
-    async for event in run_pipeline(cuda_code, kernel_name, simple_mode):
-        dumped = event.model_dump()
-        events.append(dumped)
-        if dumped.get("agent") == "coordinator" and dumped.get("status") == "done" and dumped.get("detail"):
-            try:
-                final_report = json.loads(dumped["detail"])
-            except (json.JSONDecodeError, TypeError):
-                final_report = None
+    initial_state = {
+        "cuda_code": cuda_code,
+        "kernel_name": kernel_name,
+        "simple_mode": simple_mode,
+        "analyzer_result": None,
+        "translator_result": None,
+        "optimizer_result": None,
+        "tester_result": None,
+        "iteration": 0,
+        "max_iterations": 3,
+        "should_retry": False,
+        "migration_success": False,
+        "final_report": {},
+        "events": [],
+    }
+
+    async for chunk in migration_pipeline.astream(initial_state, stream_mode="updates"):
+        for _node_name, node_output in chunk.items():
+            for event in node_output.get("events", []):
+                events.append(event)
+                if (
+                    event.get("agent") == "coordinator"
+                    and event.get("status") == "done"
+                    and event.get("detail")
+                ):
+                    try:
+                        final_report = json.loads(event["detail"])
+                    except (json.JSONDecodeError, TypeError):
+                        final_report = None
 
     return events, final_report
 
