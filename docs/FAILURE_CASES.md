@@ -56,3 +56,25 @@ cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, d_in, d_out, num_item
 **What ROCmPort AI does not do**: guarantee correctness or performance parity for library-heavy code without human validation.
 
 **Fix requirement**: Manual comparison of CUB vs hipCUB primitive behavior for the specific use case, or replacement with rocPRIM equivalents.
+
+## Failure Case: Flash Attention — Warp Shuffle Intrinsics
+
+**Kernel**: Simplified Flash Attention forward pass (Dao et al. 2022 style)
+**File**: backend/demo_kernels/flash_attention_simplified.cu
+
+**Bugs detected by ROCmPort AI static scan**:
+- `__shfl_down` with implicit warp-32 offset=16 — on AMD wavefront-64, 
+  the final reduction should use offset=32 first
+- Softmax reduction terminates at 16 lanes — silently wrong on gfx942
+
+**What hipify does**: renames cudaFree to hipFree, cuda headers to hip headers. 
+Does NOT fix the shuffle semantics.
+
+**What ROCmPort AI does**: flags both shuffle calls as HIGH risk, 
+identifies the offset=16 assumption, suggests wavefront-64 aware rewrite.
+
+**Status**: Compiled and executed on AMD Instinct MI300X (gfx942), ROCm 7.2.
+Numerical correctness not verified — requires reference CPU implementation.
+
+**Fix required**: Replace `__shfl_down(x, 16)` with two-stage reduction:
+  `__shfl_down(x, 32)` then `__shfl_down(x, 16)` for wavefront-64.
