@@ -3,10 +3,14 @@
 echo "ROCmPort AI - Starting Backend Server..."
 echo
 
-cd "$(dirname "$0")/backend"
+cd "$(dirname "$0")"
 
 echo "Installing dependencies..."
-pip install -r requirements.txt
+if [ ! -d .venv ]; then
+    python3 -m venv .venv
+fi
+. .venv/bin/activate
+pip install -r backend/requirements.txt
 
 echo
 echo "Setting up environment..."
@@ -18,6 +22,15 @@ if [ ! -f .env ]; then
 fi
 
 echo
+echo "Building frontend..."
+npm --prefix frontend install
+npm --prefix frontend run build
+if [ $? -ne 0 ]; then
+    echo "Frontend build failed. Make sure Node.js and npm are installed."
+    exit 1
+fi
+
+echo
 echo "Starting FastAPI server..."
 echo "Server will be available at: http://localhost:8000"
 echo "Frontend should be opened at: http://localhost:8000/index.html"
@@ -25,4 +38,4 @@ echo
 echo "Press Ctrl+C to stop the server"
 echo
 
-uvicorn main:app --reload --port 8000 --host 0.0.0.0
+python -m uvicorn backend.main:app --reload --port 8000 --host 0.0.0.0

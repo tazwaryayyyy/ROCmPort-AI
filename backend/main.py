@@ -420,8 +420,10 @@ async def list_demo_kernels():
     return kernels
 
 
-# Serve frontend if built
-frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
+# Serve compiled frontend when available; fall back to the source folder for dev.
+frontend_root = os.path.join(os.path.dirname(__file__), "..", "frontend")
+frontend_dist = os.path.join(frontend_root, "dist")
+frontend_path = frontend_dist if os.path.exists(frontend_dist) else frontend_root
 if os.path.exists(frontend_path):
     app.mount("/", StaticFiles(directory=frontend_path,
               html=True), name="frontend")

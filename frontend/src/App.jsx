@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 
+const API_BASE = window.location.protocol === 'file:'
+    ? 'http://localhost:8000'
+    : window.location.origin
+
 // ─── Template Kernels ─────────────────────────────────────────────────────────
 
 const KERNEL_VECTOR_ADD = String.raw`
@@ -674,7 +678,7 @@ export default function App() {
         startTimer()
 
         try {
-            const res = await fetch('http://localhost:8000/port', {
+            const res = await fetch(`${API_BASE}/port`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
