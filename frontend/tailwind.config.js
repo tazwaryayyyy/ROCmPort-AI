@@ -6,6 +6,7 @@ export default {
             fontFamily: {
                 code: ['"JetBrains Mono"', 'monospace'],
                 ui: ['Inter', 'sans-serif'],
+                display: ['"Clash Display"', 'sans-serif'],
             },
             keyframes: {
                 'rocm-pulse': {
