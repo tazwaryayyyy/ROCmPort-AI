@@ -31,7 +31,7 @@ class HipifyWrapper:
                 capture_output=True, timeout=5, check=False
             )
             return result.returncode == 0
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        except (OSError, subprocess.SubprocessError):
             return False
 
     def _run_real_hipify(self, cuda_code: str) -> tuple[str, list[dict]] | None:

@@ -124,7 +124,11 @@ class LLMClient:
             return response.choices[0].message.content
 
         except Exception as e:
-            raise RuntimeError(f"LLM request failed: {str(e)}") from e
+            message = str(e)
+            lowered = message.lower()
+            if "rate limit" in lowered or "429" in lowered or "quota" in lowered:
+                raise RuntimeError(f"LLM request rate-limited: {message}") from e
+            raise RuntimeError(f"LLM request failed: {message}") from e
 
     # ------------------------------------------------------------------
     # Utility / introspection

@@ -124,7 +124,10 @@ def run(cuda_code: str) -> AnalyzerResult:
             "complexity_score": 5
         }
 
-    workload_type = WorkloadType(data.get("workload_type", "unknown"))
+    try:
+        workload_type = WorkloadType(data.get("workload_type", "unknown"))
+    except ValueError:
+        workload_type = WorkloadType.UNKNOWN
     prediction = generate_prediction(workload_type, line_count)
 
     return AnalyzerResult(

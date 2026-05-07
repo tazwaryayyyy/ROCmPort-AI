@@ -19,6 +19,7 @@ class RocprofWrapper:
         if not self.rocm_available:
             return True, "Mock compilation successful (ROCm not available)"
 
+        temp_file = None
         try:
             with tempfile.NamedTemporaryFile(mode='w', suffix='.hip', delete=False) as f:
                 f.write(hip_code)
@@ -39,9 +40,6 @@ class RocprofWrapper:
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=60, env=env, check=False)
 
-            # Cleanup
-            os.unlink(temp_file)
-
             if result.returncode == 0:
                 return True, f"Compilation successful: {output_file}"
             else:
@@ -51,6 +49,12 @@ class RocprofWrapper:
             return False, "Compilation timed out"
         except (OSError, subprocess.SubprocessError) as e:
             return False, f"Compilation error: {str(e)}"
+        finally:
+            try:
+                if temp_file and os.path.exists(temp_file):
+                    os.unlink(temp_file)
+            except OSError:
+                pass
 
     def run_with_profiling(self, executable_path: str, args: List[str] = None) -> Dict:
         """Run executable with rocprof profiling"""
@@ -68,6 +72,14 @@ class RocprofWrapper:
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=120, check=False)
 
+            if result.returncode != 0:
+                detail = result.stderr.strip() or result.stdout.strip() or "rocprof exited with a non-zero status"
+                return {
+                    "success": False,
+                    "error": f"Profiling failed: {detail}",
+                    "execution_time_ms": 0,
+                }
+
             # Parse rocprof output
             profiling_data = self._parse_rocprof_output(
                 result.stdout, result.stderr)
@@ -75,9 +87,9 @@ class RocprofWrapper:
             return profiling_data
 
         except subprocess.TimeoutExpired:
-            return {"error": "Profiling timed out", "execution_time_ms": 0}
+            return {"success": False, "error": "Profiling timed out", "execution_time_ms": 0}
         except (OSError, subprocess.SubprocessError) as e:
-            return {"error": f"Profiling error: {str(e)}", "execution_time_ms": 0}
+            return {"success": False, "error": f"Profiling error: {str(e)}", "execution_time_ms": 0}
 
     def _parse_rocprof_output(self, stdout: str, _stderr: str) -> Dict:
         """Parse rocprof output to extract metrics"""

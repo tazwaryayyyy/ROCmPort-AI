@@ -714,11 +714,19 @@ export default function App() {
 
                         // Extract benchmark data from the coordinator's done event
                         if (ev.agent === 'coordinator' && ev.status === 'done') {
-                            const r = ev.result ?? ev
+                            let report = ev.result ?? null
+                            if (!report && ev.detail) {
+                                try {
+                                    report = JSON.parse(ev.detail)
+                                } catch (_) {
+                                    report = null
+                                }
+                            }
+                            const r = report ?? ev
                             setBenchmark({
                                 total_changes: r.total_changes ?? r.changes_made ?? '—',
-                                bugs_found: r.bugs_found ?? r.critical_bugs ?? '—',
-                                compiled_successfully: r.compiled_successfully ?? r.compiled ?? false,
+                                bugs_found: r.bugs_found ?? r.critical_bugs ?? r.static_risk_report?.critical_count ?? '—',
+                                compiled_successfully: r.compiled_successfully ?? r.compiled ?? r.migration_success ?? false,
                                 data_source: r.data_source ?? 'unknown',
                             })
                         }
