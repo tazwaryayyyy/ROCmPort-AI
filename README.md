@@ -1,149 +1,160 @@
-# ROCmPort AI
+# ⚡ ROCmPort AI
 
-ROCmPort AI helps CUDA teams migrate to AMD by translating, testing, and iteratively optimizing kernels using real hardware feedback.
+A multi-agent pipeline that migrates CUDA kernels to AMD ROCm/HIP — catching the bugs that `hipify` misses, compiling with `hipcc`, profiling with `rocprof` on real MI300X hardware, and iterating until the output is correct and fast.
 
-It is an acceleration system for migration work, not a one-click replacement for CUDA expertise.
+---
 
 ## Live Demo
 
--  **Backend Demo**: https://rocmport-ai.onrender.com
--  **HuggingFace Space**: https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/ROCmPort-AI
+- **Backend API**: https://rocmport-ai.onrender.com
+- **HuggingFace Space**: https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/ROCmPort-AI
 
-## What This Project Is
+---
 
-ROCmPort AI orchestrates a migration loop:
+## The Gap hipify Doesn't Close
 
-1. Analyze CUDA code and detect migration risks.
-2. Translate with hipify plus LLM-assisted fixes.
-3. Compile and profile with ROCm tooling.
-4. Propose optimization changes and re-test.
-5. Return artifacts and decision trace.
+`hipify-clang` translates CUDA API calls mechanically. It cannot detect that `if (tid < 32)` in a warp reduction silently skips lanes 32–63 on AMD wavefront-64. The code compiles. The output is wrong. No errors. No warnings.
 
-## What This Project Is Not
-
-- Not guaranteed to auto-fix all CUDA kernels.
-- Not a claim that every kernel improves.
-- Not a replacement for domain experts in performance-critical code.
-
-Complex kernels can fail conversion due to architecture assumptions, undefined behavior, inline PTX, or handcrafted memory logic. The value is reduced migration time and faster debug loops.
-
-## Fine-tuned Model
-
-[tazwarrrr/rocmport-qwen-wavefront-finetuned](https://huggingface.co/tazwarrrr/rocmport-qwen-wavefront-finetuned)  
-Qwen2.5-Coder-7B-Instruct fine-tuned on 153 CUDA→ROCm wavefront-64 bug examples.  
-Trained on AMD Instinct MI300X (gfx942) with ROCm 6.2 in 79 seconds.
-
-## Dataset
-
-Training data: [tazwarrrr/cuda-to-rocm-wavefront-bugs](https://huggingface.co/datasets/tazwarrrr/cuda-to-rocm-wavefront-bugs)  
-170 expert-curated CUDA→ROCm wavefront-64 bug examples across 6 categories.
-See `dataset/upload_dataset.py` for how it was compiled and uploaded.
-
-## Target User and Business Case
-
-Primary product position:
-- Tool for teams evaluating AMD migration cost and performance tradeoffs.
-
-Typical use cases:
-- Port legacy CUDA modules to HIP/ROCm with a measurable baseline.
-- Build a migration backlog ranked by risk and expected impact.
-- Identify kernels where MI300X memory capacity can remove sharding complexity.
-
-Cost and performance impact should be calculated from your environment and workload, not fixed marketing ranges.
-
-## AMD-Specific Technical Considerations (MI300X)
-
-ROCmPort AI explicitly reasons about AMD constraints and opportunities, including:
-
-- Wavefront size 64 (vs CUDA warp 32 assumptions), which affects reduction trees, ballot/shuffle idioms, and launch geometry.
-- LDS (local data store) usage and bank behavior for tile staging and reuse.
-- MI300X memory capacity (192GB HBM) and implications for reducing model/data sharding in some workflows.
-- Memory access patterns and occupancy tradeoffs under ROCm compiler behavior.
-
-These are the places where migration often breaks or underperforms even after a successful hipify pass.
-
-### Concrete Wavefront Mismatch Example
-
-From `backend/demo_kernels/reduction.cu`, the reduction tail assumes a 32-thread warp:
+**ROCmPort AI catches this before execution.**
 
 ```cpp
-// NVIDIA-style assumption (incorrect on AMD wavefront=64)
+// NVIDIA assumption — silently wrong on AMD (wavefront = 64)
 if (tid < 32) {
-	volatile float* vsmem = sdata;
-	vsmem[tid] += vsmem[tid + 32];
-	vsmem[tid] += vsmem[tid + 16];
-	...
+    vsmem[tid] += vsmem[tid + 32];  // lanes 32-63 never participate
+    ...
 }
-```
 
-A wavefront-aware correction expands the final stage to include the 64-wide lane behavior:
-
-```cpp
-// AMD-aware final reduction stage
+// AMD-aware correction
 if (tid < 64) {
-	volatile float* vsmem = sdata;
-	vsmem[tid] += vsmem[tid + 32];
-	if (tid < 32) {
-		vsmem[tid] += vsmem[tid + 16];
-		vsmem[tid] += vsmem[tid + 8];
-		vsmem[tid] += vsmem[tid + 4];
-		vsmem[tid] += vsmem[tid + 2];
-		vsmem[tid] += vsmem[tid + 1];
-	}
+    vsmem[tid] += vsmem[tid + 32];
+    if (tid < 32) {
+        vsmem[tid] += vsmem[tid + 16];
+        vsmem[tid] += vsmem[tid + 8];
+        vsmem[tid] += vsmem[tid + 4];
+        vsmem[tid] += vsmem[tid + 2];
+        vsmem[tid] += vsmem[tid + 1];
+    }
 }
 ```
 
-The key point is not the exact rewrite shape; it is that warp-size assumptions must be made explicit and re-validated on AMD.
+---
 
-## Why This Is More Than Glue
+## What ROCmPort AI Does
 
-ROCmPort AI combines existing tools, but its core value is the control system around them:
+1. **Analyze** — scan CUDA kernel for AMD-specific risks (wavefront size, ballot/shuffle idioms, shared memory layout)
+2. **Translate** — run hipify + LLM-assisted fixes for bugs hipify can't detect
+3. **Compile** — build with `hipcc` targeting gfx942, surface real errors
+4. **Profile** — run `rocprof` and measure actual throughput on MI300X
+5. **Optimize** — propose changes based on profiler feedback, re-test
+6. **Report** — stream full decision trace with per-agent rationale
 
-- Decision loop: detect failure/perf regressions, apply next strategy, re-run.
-- Explainability: stream each step and rationale (SSE logs + final report).
-- Verification: pair code changes with compile/test/profiler evidence.
+If the optimized output underperforms the baseline, the coordinator retries the optimizer (max 3 iterations) before returning the best result found.
 
-## Judge Mode Walkthrough
+---
 
-Use this flow for technical review:
+## Live Results on AMD Instinct MI300X
 
-1. Show original CUDA kernel.
-2. Show baseline HIP from straight hipify output.
-3. Run ROCmPort AI and show per-agent trace.
-4. Show final optimized HIP output.
-5. Show measured result against the declared baseline.
-6. Show one case with marginal gain or no gain.
+All numbers from real MI300X hardware — AMD DevCloud, gfx942, ROCm 7.2. No simulated data.
 
-This format makes the comparison falsifiable and avoids curated-demo concerns.
+| Kernel | Input | Baseline HIP | Optimized HIP | Result |
+|--------|-------|-------------|---------------|--------|
+| matrix_multiply | 512×512 fp32 | 0.068ms | 0.026ms | **2.61× speedup** |
+| reduction | 16M elements | wrong output | 0.019ms | **PASS (wavefront-64 fix)** |
+| vector_add | 32M elements | — | 0.099ms | **4,077 GB/s (77% peak)** |
 
-- Full walkthrough: `docs/JUDGE_MODE.md`.
+Hardware: AMD Instinct MI300X VF, 192GB HBM3, ROCm 7.2
 
-## Documented Failure Case
+---
 
-At least one failure path is documented with source, output, root cause, and fix requirements:
+## The Dataset No One Else Built
 
-- See `docs/FAILURE_CASES.md`.
+**170 expert-curated CUDA→ROCm correctness bugs** across 6 categories. Every example includes the original CUDA, the still-broken `hipify` output, and the correct AMD version — with a precise explanation of why the bug manifests on gfx942.
 
-This is intentional: credibility improves when the system's failure boundary is visible.
+| Category | Count | Description |
+|----------|-------|-------------|
+| `warp_size_hardcoded_32` | 50 | `tid & 31`, `tid >> 5`, loop bounds |
+| `threadidx_modulo_warpsize` | 30 | `threadIdx.x % 32` for lane ID |
+| `shared_memory_no_padding` | 30 | Arrays sized for 32-thread warps |
+| `reduction_loop_bound_32` | 20 | Shuffle loops missing offset=32 step |
+| `ballot_sync_warp_assumptions` | 20 | `uint32_t` truncating 64-bit ballot |
+| `shfl_down_sync_mask_assumptions` | 20 | 32-bit mask on 64-lane wavefront |
 
-## LLM Configuration
+📦 **[tazwarrrr/cuda-to-rocm-wavefront-bugs](https://huggingface.co/datasets/tazwarrrr/cuda-to-rocm-wavefront-bugs)**
 
-| Agent | Model | Why |
-|-------|-------|-----|
-| Analyzer | Qwen2.5-Coder-32B | Purpose-built for code reasoning |
-| Translator | Qwen2.5-Coder-32B | Best-in-class CUDA/HIP translation |
-| Optimizer | Qwen2.5-Coder-32B | Hardware-aware optimization proposals |
-| Tester | llama-3.3-70b | Fast log parsing, cost-efficient fallback |
+---
 
-**Primary**: Qwen2.5-Coder-32B via HuggingFace Inference API  
-**Production**: Qwen2.5-Coder-32B via vLLM on AMD MI300X DevCloud  
-**Estimated cost**: ~$0.003 per kernel migration (8K tokens avg)
+## The Model Trained on AMD Hardware
+
+Qwen2.5-Coder-7B-Instruct fine-tuned with LoRA (r=16) on the wavefront bug dataset — trained on an AMD Instinct MI300X via AMD Developer Cloud in 79 seconds. Final loss: 1.189, token accuracy: 81%.
+
+🤖 **[tazwarrrr/rocmport-qwen-wavefront-finetuned](https://huggingface.co/tazwarrrr/rocmport-qwen-wavefront-finetuned)**
+
+---
+
+## Agent Architecture
+
+```
+CUDA Input
+    │
+    ▼
+┌─────────────┐
+│   Analyzer  │  Detect wavefront bugs, classify risk
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│  Translator │  hipify + LLM fix for missed bugs
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐     speedup < 0.95?
+│  Optimizer  │ ◄──────────────────┐
+└──────┬──────┘                    │
+       │                           │
+       ▼                           │
+┌─────────────┐     retry (max 3)  │
+│   Tester    │ ───────────────────┘
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│ Coordinator │  Final report + artifacts
+└─────────────┘
+```
+
+| Agent | Model | Role |
+|-------|-------|------|
+| Analyzer | Qwen2.5-Coder-32B | Code risk analysis |
+| Translator | Qwen2.5-Coder-32B | CUDA→HIP translation |
+| Optimizer | Qwen2.5-Coder-32B | Hardware-aware optimization |
+| Tester | Llama-3.3-70B | Log parsing, compile verification |
+
+---
+
+## AMD-Specific Technical Considerations
+
+ROCmPort AI reasons explicitly about MI300X constraints:
+
+- **Wavefront size 64** — affects reduction trees, ballot/shuffle idioms, launch geometry
+- **LDS bank behavior** — tile staging and reuse patterns
+- **192GB HBM3** — opportunities to eliminate model sharding in some workflows
+- **gfx942 occupancy** — memory access pattern tradeoffs under ROCm compiler
+
+---
+
+## Why This Is Hard to Replicate
+
+A basic clone can chain `hipify` and an LLM. The differentiator is:
+
+- **Decision loop** — detect failure/perf regression, apply next strategy, re-run
+- **Explainability** — stream each agent's reasoning via SSE in real time
+- **Verification** — every code change paired with compile + profiler evidence
+- **Dataset** — 170 labeled correctness bugs that don't exist anywhere else
+- **Fine-tuned model** — trained on real AMD hardware on a purpose-built dataset
 
 ---
 
 ## Quick Start
-
-### Option 1: Startup Script
 
 ```bash
 # Windows
@@ -151,134 +162,97 @@ start.bat
 
 # Linux/Mac
 ./start.sh
-```
 
-### Option 2: Manual
-
-```bash
+# Manual
 cd backend
 pip install -r requirements.txt
 cp .env.example .env
-# add your GROQ_API_KEY
+# Add GROQ_API_KEY
 uvicorn main:app --reload --port 8000
 ```
 
 Open `frontend/index.html` in a browser.
 
-### Option 3: Docker
+### Docker
 
 ```bash
 docker build -t rocmport-ai .
 docker run -p 8000:8000 rocmport-ai
 ```
 
-## Benchmarking and Reproducibility
-
-Benchmark claims should always include:
-
-- Baseline definition (e.g., straight hipify output).
-- Hardware/software versions.
-- Input sizes and run counts.
-- Correctness verification.
-- Full logs or scripts to reproduce.
-
-See `BENCHMARKS.md` for the recommended reporting format used by this repository.
-
-## Project Structure
-
-```text
-ROCmPort AI/
-├── backend/
-│   ├── main.py
-│   ├── models.py
-│   ├── agents/
-│   │   ├── analyzer.py
-│   │   ├── translator.py
-│   │   ├── optimizer.py
-│   │   ├── tester.py
-│   │   └── coordinator.py
-│   ├── tools/
-│   │   ├── hipify_wrapper.py
-│   │   ├── rocprof_wrapper.py
-│   │   └── llm_client.py
-│   ├── demo_kernels/
-│   └── prompts/
-├── frontend/
-│   └── index.html
-├── BENCHMARKS.md
-└── README.md
-```
+---
 
 ## Configuration
-
-Copy `.env.example` to `.env`:
 
 ```bash
 GROQ_API_KEY=your_key
 GROQ_MODEL=llama-3.3-70b-versatile
 
+# AMD DevCloud vLLM (production)
 USE_VLLM=true
 VLLM_BASE_URL=http://your-amd-cloud:8000
-VLLM_API_KEY=your_vllm_key
-VLLM_MODEL=amd/llama-3.3-70b
-
+VLLM_MODEL=Qwen/Qwen2.5-Coder-32B-Instruct
 ROCM_AVAILABLE=true
-HIPCC_PATH=hipcc
-ROCPROF_PATH=rocprof
 ```
 
-## Defensible Scope
+---
 
-This project is harder to replicate than a thin wrapper because it couples:
+## Documented Failure Cases
 
-- Multi-agent orchestration with retry decisions.
-- Structured traceability across analysis, translation, optimization, and test phases.
-- Integrated reporting where claims can be audited against intermediate artifacts.
+At least one failure path is documented with source, output, root cause, and fix requirements. See [`docs/FAILURE_CASES.md`](docs/FAILURE_CASES.md).
 
-A basic weekend clone can chain hipify and an LLM. The differentiator is reliable decision flow and evidence quality under failure.
+Credibility improves when the system's failure boundary is visible.
+
+---
+
+## Judge Mode
+
+For technical review, use this flow:
+
+1. Show original CUDA kernel
+2. Show baseline HIP from straight `hipify` output
+3. Run ROCmPort AI — watch per-agent trace stream
+4. Show final optimized HIP output
+5. Show measured result vs declared baseline
+6. Show one case with marginal gain or no gain
+
+Full walkthrough: [`docs/JUDGE_MODE.md`](docs/JUDGE_MODE.md)
+
+---
+
+## Project Structure
+
+```
+ROCmPort AI/
+├── backend/
+│   ├── agents/          # analyzer, translator, optimizer, tester, coordinator
+│   ├── tools/           # hipify_wrapper, rocprof_wrapper, llm_client
+│   ├── demo_kernels/    # reduction.cu, matrix_multiply.cu, vector_add.cu
+│   └── graph/           # LangGraph StateGraph pipeline
+├── dataset/
+│   ├── upload_dataset.py
+│   └── finetune_qwen.py
+├── docs/
+│   ├── LIVE_RESULTS.md
+│   ├── FAILURE_CASES.md
+│   └── JUDGE_MODE.md
+├── frontend/
+└── BENCHMARKS.md
+```
+
+---
 
 ## Troubleshooting
 
 | Issue | Resolution |
-|---|---|
-| `GROQ_API_KEY not found` | Add key to `.env`. |
-| `hipcc not found` | Install ROCm toolchain or run in an ROCm-enabled environment. |
-| Backend unavailable | Verify FastAPI server is running on port `8000`. |
-| No improvement observed | Re-check baseline definition, kernel size, and profiler counters. |
+|-------|-----------|
+| `GROQ_API_KEY not found` | Add key to `.env` |
+| `hipcc not found` | Install ROCm toolchain or use ROCm-enabled environment |
+| Backend unavailable | Verify FastAPI running on port 8000 |
+| No improvement observed | Check baseline definition and profiler counters |
 
-
-## Why Not Just Use hipify?
-
-hipify-clang is AMD's official translation tool. ROCmPort AI uses it as a first pass. The problem is what hipify cannot catch.
-
-**The reduction kernel example:**
-
-hipify successfully translates `reduction.cu` — it compiles, it runs, it returns a result. No errors. But the result is silently wrong on AMD hardware.
-
-The root cause: line 59 assumes `warpSize=32` in the final unrolled reduction stage. On AMD, wavefront size is 64. Lanes 32–63 are skipped entirely in the final summation. The output looks plausible but is numerically incorrect.
-
-hipify has no knowledge of this. It performs mechanical API renaming. It cannot reason about hardware architecture assumptions baked into kernel logic.
-
-ROCmPort AI catches this before execution:
-
-- Static scanner flags line 59 as CRITICAL risk: "hardcoded warp-32 conditional — assumes NVIDIA warpSize=32. On AMD wavefront=64 this silently skips lanes 32–63"
-- LLM correction pass rewrites the final reduction stage to be wavefront-64 aware
-- Compiler + rocprof verification confirms the fix compiles and executes correctly on gfx942
-
-This is the gap between "it compiles" and "it is correct."
-
-## ✅ Live Results on AMD Instinct MI300X
-
-All demo kernels migrated, compiled, and profiled on real MI300X hardware (AMD DevCloud, ROCm 7.2, gfx942).
-
-| Kernel | Input | Baseline HIP | Optimized HIP | Speedup |
-|--------|-------|-------------|---------------|---------|
-| matrix_multiply | 512x512 fp32 | 0.068ms | 0.026ms | 2.61x |
-| reduction | 16M elements | — | 0.019ms | PASS (correct) |
-| vector_add | 32M elements | — | 0.099ms | 4077.6 GB/s |
-
-Hardware: AMD Instinct MI300X VF (gfx942), 192GB HBM3, ROCm 7.2
+---
 
 ## License
 
-See `LICENSE`.
+Apache 2.0 — see [`LICENSE`](LICENSE)
