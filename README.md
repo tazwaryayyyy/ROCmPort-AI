@@ -27,6 +27,12 @@ ROCmPort AI orchestrates a migration loop:
 
 Complex kernels can fail conversion due to architecture assumptions, undefined behavior, inline PTX, or handcrafted memory logic. The value is reduced migration time and faster debug loops.
 
+## Dataset
+
+Training data: [tazwarrrr/cuda-to-rocm-wavefront-bugs](https://huggingface.co/datasets/tazwarrrr/cuda-to-rocm-wavefront-bugs)  
+170 expert-curated CUDA→ROCm wavefront-64 bug examples across 6 categories.
+See `dataset/upload_dataset.py` for how it was compiled and uploaded.
+
 ## Target User and Business Case
 
 Primary product position:
