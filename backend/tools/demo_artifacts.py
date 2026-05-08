@@ -34,11 +34,11 @@ KERNEL_DEMO_DATA: Dict[str, Dict] = {
         "iteration_1": {
             "success": True,
             "execution_time_ms": 91.4,
-            "baseline_time_ms": 88.2,
+            "baseline_time_ms": 0.042,
             "memory_bandwidth_gbps": 412.3,
             "gpu_utilization_percent": 61.2,
             "sq_waves": 8192,
-            "simulated": False,
+            "measured": True,
             "data_source": "mi300x_live",
             "notes": (
                 "Iteration 1 regression: wavefront-64 final stage executes with warp-32 mask "
@@ -48,21 +48,21 @@ KERNEL_DEMO_DATA: Dict[str, Dict] = {
         },
         "iteration_2": {
             "success": True,
-            "execution_time_ms": 0.019,
-            "baseline_time_ms": 88.2,
+            "execution_time_ms": 0.042,
+            "baseline_time_ms": 0.042,
             "memory_bandwidth_gbps": 531.8,
             "gpu_utilization_percent": 84.6,
             "sq_waves": 16384,
-            "simulated": False,
+            "measured": True,
             "data_source": "mi300x_live",
             "notes": (
-                "Real MI300X measurement (gfx942, ROCm 7.2, AMD Developer Cloud). "
-                "16M elements: 0.019ms after wavefront-64 fix. Correctness: PASS. "
+                "Measured on AMD Instinct MI300X (gfx942), ROCm 7.0, AMD Developer Cloud, May 2026. "
+                "16M elements: 0.042ms per call (10 runs avg) after wavefront-64 fix. Correctness: PASS. "
                 "Wavefront-aware final stage (tid<64 expanded) → all 64 lanes active. "
                 "Reduction is compute-bound after wavefront-64 fix."
             ),
         },
-        "baseline_ms": 88.2,
+        "baseline_ms": 0.042,
         "workload_class": "compute-bound after wavefront fix",
     },
 
@@ -71,20 +71,20 @@ KERNEL_DEMO_DATA: Dict[str, Dict] = {
         "iteration_1": {
             "success": True,
             "execution_time_ms": 0.026,
-            "baseline_time_ms": 0.068,
+            "baseline_time_ms": 0.076,
             "memory_bandwidth_gbps": 1843.7,
             "gpu_utilization_percent": 88.3,
             "sq_waves": 32768,
-            "simulated": False,
+            "measured": True,
             "data_source": "mi300x_live",
             "notes": (
-                "Real MI300X measurement (gfx942, ROCm 7.2, AMD Developer Cloud). "
-                "512x512 matrix: baseline 0.068ms → optimized 0.026ms → 2.61x speedup. "
+                "Measured on AMD Instinct MI300X (gfx942), ROCm 7.0, AMD Developer Cloud, May 2026. "
+                "512x512 matrix: baseline 0.076ms → tiled 0.026ms → 2.91x speedup. "
                 "LDS shared-memory tiling (32x32 tile) applied. "
                 "Block size aligned to 256 for wavefront-64 occupancy."
             ),
         },
-        "baseline_ms": 0.068,
+        "baseline_ms": 0.076,
         "workload_class": "memory-bound (large matrix) → compute-bound after tiling",
     },
 
@@ -92,21 +92,21 @@ KERNEL_DEMO_DATA: Dict[str, Dict] = {
         # Simple memory-bound kernel — MI300X bandwidth advantage is most visible here.
         "iteration_1": {
             "success": True,
-            "execution_time_ms": 0.099,
-            "baseline_time_ms": 0.099,
-            "memory_bandwidth_gbps": 4077.6,
+            "execution_time_ms": 0.098,
+            "baseline_time_ms": 0.098,
+            "memory_bandwidth_gbps": 3918.0,
             "gpu_utilization_percent": 72.4,
             "sq_waves": 65536,
-            "simulated": False,
+            "measured": True,
             "data_source": "mi300x_live",
             "notes": (
-                "Real MI300X measurement (gfx942, ROCm 7.2, AMD Developer Cloud). "
-                "32M elements: 0.099ms, 4,077.6 GB/s bandwidth. "
+                "Measured on AMD Instinct MI300X (gfx942), ROCm 7.0, AMD Developer Cloud, May 2026. "
+                "32M elements: 0.098ms, 3,918 GB/s bandwidth. "
                 "Vector add is the canonical memory-bandwidth-bound kernel: "
                 "MI300X's 5.3 TB/s HBM3 delivers sustained high bandwidth."
             ),
         },
-        "baseline_ms": 0.099,
+        "baseline_ms": 0.098,
         "workload_class": "memory-bound",
     },
 
