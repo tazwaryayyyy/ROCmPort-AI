@@ -59,6 +59,15 @@ _PATTERNS: List[tuple] = [
         "The return type changes from uint32_t to uint64_t — update downstream bitmask logic."
     ),
     (
+        "shfl_wavefront_offset_16",
+        re.compile(r'\b__shfl(?:_down|_up|_xor)?\s*\([^;]*,\s*16\s*(?:,|\))', re.MULTILINE),
+        "HIGH",
+        "__shfl* with offset=16 often encodes a 32-lane warp reduction tail. "
+        "On AMD wavefront=64 the reduction should include an offset=32 step first.",
+        "Audit the shuffle reduction and add a wavefront-64 step, e.g. offset=32 "
+        "before offset=16 where the algorithm reduces a full wavefront."
+    ),
+    (
         "activemask_warp",
         re.compile(r'\b__activemask\s*\(\s*\)', re.MULTILINE),
         "HIGH",
@@ -86,7 +95,7 @@ _PATTERNS: List[tuple] = [
     (
         "inline_ptx_block",
         re.compile(r'asm\s+volatile\s*\(', re.MULTILINE),
-        "HIGH",
+        "CRITICAL",
         "Inline PTX assembly is NVIDIA-specific ISA. hipify cannot translate PTX semantics. "
         "The kernel may compile under hipcc but will have undefined or incorrect behaviour.",
         "Replace inline PTX with portable HIP intrinsics or CDNA ISA equivalents. "
@@ -100,6 +109,15 @@ _PATTERNS: List[tuple] = [
         "hipify handles this mechanically but the check confirms it was applied.",
         "Replace with #include <hip/hip_runtime.h>. "
         "hipify-clang does this automatically in its first pass."
+    ),
+    (
+        "cuda_library_dependency",
+        re.compile(r'#\s*include\s*[<"][^>"]*(?:cub|thrust|cudnn)[^>"]*[>"]|\b(?:cub|thrust|cudnn)::', re.MULTILINE),
+        "HIGH",
+        "CUDA library dependency detected. hipify can rename some CUB/Thrust/cuDNN symbols, "
+        "but API coverage and performance behavior are not guaranteed to match rocPRIM/hipCUB/MIOpen.",
+        "Manually review the translated library call, compare against rocPRIM/hipCUB/MIOpen, "
+        "and add correctness/performance tests for the specific primitive."
     ),
     (
         "shared_memory_no_padding",

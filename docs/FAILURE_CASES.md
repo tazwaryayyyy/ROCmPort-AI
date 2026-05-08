@@ -70,8 +70,9 @@ cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, d_in, d_out, num_item
 **What hipify does**: renames cudaFree to hipFree, cuda headers to hip headers. 
 Does NOT fix the shuffle semantics.
 
-**What ROCmPort AI does**: flags both shuffle calls as HIGH risk, 
-identifies the offset=16 assumption, suggests wavefront-64 aware rewrite.
+**What ROCmPort AI does**: flags `__shfl_sync` family calls as CRITICAL risk,
+and flags unsuffixed `__shfl_down(..., 16)` style reductions as HIGH risk.
+It identifies the offset=16 assumption and suggests a wavefront-64 aware rewrite.
 
 **Status**: Compiled and executed on AMD Instinct MI300X (gfx942), ROCm 7.2.
 Numerical correctness not verified — requires reference CPU implementation.

@@ -1,17 +1,28 @@
-Hardware: AMD Instinct MI300X VF (gfx942)
-ROCm: 7.2
-Date: 2025-05-06
-Compiler: hipcc --offload-arch=gfx942 -O3
+Data source: demo_artifact
+Source file: backend/tools/demo_artifacts.py
 
-matrix_multiply (512x512 fp32):
-  Basic kernel:        0.068 ms
-  Shared memory kernel: 0.026 ms
-  Speedup:             2.61x
+Hardware class:
+  GPU: AMD Instinct MI300X
+  HBM: 192GB
+  Wavefront size: 64
+  Theoretical memory bandwidth: 5.3 TB/s
 
-reduction (16M elements fp32):
-  Kernel time:         0.019 ms
-  Correctness:         PASS (16777216 == 16777216)
+matrix_multiply:
+  Baseline HIP: 121.4 ms
+  Optimized HIP: 89.1 ms
+  Speedup: 1.36x
+  Bandwidth: 1843.7 GB/s
 
-vector_add (32M elements fp32):
-  Kernel time:         0.099 ms
-  Memory bandwidth:    4077.6 GB/s (77% of MI300X peak 5.3 TB/s)
+reduction:
+  Baseline HIP: 88.2 ms
+  Optimized HIP: 68.7 ms
+  Speedup: 1.28x
+  Bandwidth: 531.8 GB/s
+
+vector_add:
+  Baseline HIP: 45.1 ms
+  Optimized HIP: 38.2 ms
+  Speedup: 1.18x
+  Bandwidth: 4821.6 GB/s
+
+Set ROCM_AVAILABLE=true on real MI300X hardware to produce real_rocm values.

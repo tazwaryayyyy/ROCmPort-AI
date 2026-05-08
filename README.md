@@ -52,17 +52,17 @@ If the optimized output underperforms the baseline, the coordinator retries the 
 
 ---
 
-## Live Results on AMD Instinct MI300X
+## Reproducible Demo Results
 
-All numbers from real MI300X hardware — AMD DevCloud, gfx942, ROCm 7.2. No simulated data.
+These numbers are deterministic `demo_artifact` values returned by the backend when `ROCM_AVAILABLE=false`. Set `ROCM_AVAILABLE=true` on real MI300X hardware to collect `data_source=real_rocm` results.
 
 | Kernel | Input | Baseline HIP | Optimized HIP | Result |
 |--------|-------|-------------|---------------|--------|
-| matrix_multiply | 512×512 fp32 | 0.068ms | 0.026ms | **2.61× speedup** |
-| reduction | 16M elements | wrong output | 0.019ms | **PASS (wavefront-64 fix)** |
-| vector_add | 32M elements | — | 0.099ms | **4,077 GB/s (77% peak)** |
+| matrix_multiply | demo artifact | 121.4ms | 89.1ms | **1.36x speedup** |
+| reduction | demo artifact | 88.2ms | 68.7ms | **1.28x speedup** |
+| vector_add | demo artifact | 45.1ms | 38.2ms | **1.18x speedup** |
 
-Hardware: AMD Instinct MI300X VF, 192GB HBM3, ROCm 7.2
+Hardware class: AMD Instinct MI300X, 192GB HBM3, wavefront=64
 
 ---
 
@@ -164,14 +164,19 @@ start.bat
 ./start.sh
 
 # Manual
-cd backend
-pip install -r requirements.txt
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Linux/Mac:
+. .venv/bin/activate
+pip install -r backend/requirements.txt
 cp .env.example .env
 # Add GROQ_API_KEY
-uvicorn main:app --reload --port 8000
+npm --prefix frontend install
+npm --prefix frontend run build
+python -m uvicorn backend.main:app --reload --port 8000
 ```
 
-Open `frontend/index.html` in a browser.
+Open `http://localhost:8000/index.html` in a browser.
 
 ### Docker
 
