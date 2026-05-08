@@ -1,12 +1,10 @@
 """
 Real rocprof measurements for ROCmPort AI profiling layer.
 
-matrix_multiply, vector_add, and reduction values are rocprof-measured on
-AMD Instinct MI300X (gfx942), ROCm 7.0, AMD Developer Cloud, May 8 2026.
-Raw profiler CSV files are in docs/benchmark_runs/.
-
-convolution_2d: demo_artifact (not yet measured on hardware).
-custom: simulated conservative estimate.
+matrix_multiply, vector_add, and reduction entries are sourced from real rocprof
+measurements on MI300X gfx942, ROCm 7.0, May 8 2026.
+See docs/benchmark_runs/ for raw CSV evidence.
+convolution_2d and custom use estimated values and are clearly labelled demo_artifact.
 
 Baseline definition: straight hipify-clang output with minimal compile edits (Baseline A).
 """

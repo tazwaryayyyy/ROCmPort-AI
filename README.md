@@ -1,13 +1,14 @@
 # ⚡ ROCmPort AI
 
+![ROCm](https://img.shields.io/badge/ROCm-7.0-red) ![Hardware](https://img.shields.io/badge/Hardware-MI300X-blue) ![License](https://img.shields.io/badge/License-Apache%202.0-green) ![HuggingFace](https://img.shields.io/badge/Dataset-HuggingFace-yellow)
+
+> **Live Demos**
+>
+> 🚀 **Backend API**: https://rocmport-ai-q2b1.onrender.com
+>
+> 🤗 **HuggingFace Space**: https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/ROCmPort-AI
+
 A multi-agent pipeline that migrates CUDA kernels to AMD ROCm/HIP — catching the bugs that `hipify` misses, compiling with `hipcc`, profiling with `rocprof` on real MI300X hardware, and iterating until the output is correct and fast.
-
----
-
-## Live Demo
-
-- **Backend API**: https://rocmport-ai-q2b1.onrender.com
-- **HuggingFace Space**: https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/ROCmPort-AI
 
 ---
 
@@ -39,6 +40,19 @@ if (tid < 64) {
 
 ---
 
+## How It's Different From hipify
+
+| | hipify-clang | ROCmPort AI |
+|---|---|---|
+| API renaming | ✅ | ✅ |
+| Wavefront-64 bug detection | ❌ | ✅ |
+| Compile verification | ❌ | ✅ |
+| Profiler feedback loop | ❌ | ✅ |
+| Correctness guarantee | ❌ | Partial |
+| Fine-tuned model | ❌ | ✅ |
+
+---
+
 ## What ROCmPort AI Does
 
 1. **Analyze** — scan CUDA kernel for AMD-specific risks (wavefront size, ballot/shuffle idioms, shared memory layout)
@@ -54,15 +68,24 @@ If the optimized output underperforms the baseline, the coordinator retries the 
 
 ## Reproducible Demo Results
 
-These numbers are deterministic `demo_artifact` values returned by the backend when `ROCM_AVAILABLE=false`. Set `ROCM_AVAILABLE=true` on real MI300X hardware to collect `data_source=real_rocm` results.
-
 | Kernel | Input | Baseline HIP | Optimized HIP | Result |
 |--------|-------|-------------|---------------|--------|
-| matrix_multiply | demo artifact | 121.4ms | 89.1ms | **1.36x speedup** |
-| reduction | demo artifact | 88.2ms | 68.7ms | **1.28x speedup** |
-| vector_add | demo artifact | 45.1ms | 38.2ms | **1.18x speedup** |
+| matrix_multiply | 512×512 | 0.076ms | 0.026ms | **2.91x speedup** |
+| vector_add | 32M elements | — | 0.098ms | **3,918 GB/s bandwidth (74% of MI300X peak)** |
+| reduction | 16M elements | — | 0.042ms | **correctness PASS (wavefront-64 fix)** |
 
-Hardware class: AMD Instinct MI300X, 192GB HBM3, wavefront=64
+> Source: `docs/benchmark_runs/` — real rocprof CSV output, MI300X gfx942, ROCm 7.0, May 8 2026
+
+---
+
+## Proof of Hardware
+
+Raw rocprof CSV output committed to this repo:
+- [`docs/benchmark_runs/matmul_out.stats.csv`](docs/benchmark_runs/matmul_out.stats.csv)
+- [`docs/benchmark_runs/vecadd_out.stats.csv`](docs/benchmark_runs/vecadd_out.stats.csv)
+- [`docs/benchmark_runs/reduction.stats.csv`](docs/benchmark_runs/reduction.stats.csv)
+
+Hardware: AMD Instinct MI300X VF (gfx942), 192GB HBM3, ROCm 7.0, AMD Developer Cloud
 
 ---
 

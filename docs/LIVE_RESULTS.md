@@ -14,7 +14,8 @@ and match these CSV files exactly.
 | matrix_multiply (512×512) | 0.076 | 0.026 | 2.91x | — | [matmul_out.stats.csv](benchmark_runs/matmul_out.stats.csv) |
 | vector_add (32M elements) | — | 0.098 | — | 3,918 GB/s | [vecadd_out.stats.csv](benchmark_runs/vecadd_out.stats.csv) |
 | reduction (16M elements) | — | 0.042 | — | — | [reduction.stats.csv](benchmark_runs/reduction.stats.csv) |
-| convolution_2d | 211.7 | 158.3 | 1.34x | 2,134.8 GB/s | demo_artifact (not yet measured) |
+
+> **convolution_2d kernel was not profiled in this hardware run and is excluded from the evidence table. Only kernels with traceable rocprof CSV output are reported here.**
 
 > **Note:** vector_add and reduction were run standalone; no pre-optimisation baseline
 > was captured in these runs. matrix_multiply baseline is `matmul_baseline` (hipify
