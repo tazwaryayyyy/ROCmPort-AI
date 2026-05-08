@@ -71,6 +71,9 @@ def simplify_explanation(report: FinalReport) -> str:
     return simple_text
 
 
+# NOTE: run_pipeline below is NOT used by the active LangGraph pipeline.
+# The active pipeline is backend/graph/pipeline.py (build_pipeline / pipeline).
+# This function is kept for reference but is dead code.
 async def run_pipeline(
     cuda_code: str,
     kernel_name: str = "custom",

@@ -59,21 +59,21 @@ class RocprofWrapper:
     def run_with_profiling(self, executable_path: str, args: List[str] = None) -> Dict:
         """Run executable with rocprof profiling"""
         if not self.rocm_available:
-            # Return mock profiling data
-            return self.get_mock_profiling_data()
+            # Caller should use get_mock_profiling_data(kernel_name, iteration) directly.
+            return {"success": False, "error": "ROCm not available; use get_mock_profiling_data(kernel_name, iteration) instead", "execution_time_ms": 0}
 
         try:
             if args is None:
                 args = []
 
-            # Run with rocprof
-            cmd = [self.rocprof_path, '-i', 'default', '--'] + \
-                [executable_path] + args
+            # Run with rocprof stats timing
+            cmd = [self.rocprof_path, '--stats', '--', executable_path] + args
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=120, check=False)
 
             if result.returncode != 0:
-                detail = result.stderr.strip() or result.stdout.strip() or "rocprof exited with a non-zero status"
+                detail = result.stderr.strip() or result.stdout.strip(
+                ) or "rocprof exited with a non-zero status"
                 return {
                     "success": False,
                     "error": f"Profiling failed: {detail}",
@@ -92,51 +92,43 @@ class RocprofWrapper:
             return {"success": False, "error": f"Profiling error: {str(e)}", "execution_time_ms": 0}
 
     def _parse_rocprof_output(self, stdout: str, _stderr: str) -> Dict:
-        """Parse rocprof output to extract metrics"""
+        """Parse rocprof --stats CSV output (Name,Calls,TotalDurationNs,AverageNs,Percentage)."""
+        import csv
+        import io
         try:
-            # Look for key metrics in rocprof output
-            metrics = {}
+            metrics: Dict = {}
+            reader = csv.DictReader(io.StringIO(stdout))
+            for row in reader:
+                name = row.get("Name", "")
+                # Skip ROCm runtime helper kernels
+                if "__amd_rocclr" in name:
+                    continue
+                avg_ns_str = row.get("AverageNs", "") or ""
+                if avg_ns_str.strip():
+                    avg_ns = float(avg_ns_str)
+                    if avg_ns > 0:
+                        metrics["execution_time_ms"] = round(
+                            avg_ns / 1_000_000, 6)
+                        metrics["memory_bandwidth_gbps"] = 0.0
+                        metrics["gpu_utilization_percent"] = 0.0
+                        metrics["sq_waves"] = 0
+                        break
 
-            # Parse execution time
-            time_match = re.search(
-                r'Kernel execution time:\s+(\d+\.\d+)\s*ms', stdout)
-            if time_match:
-                metrics['execution_time_ms'] = float(time_match.group(1))
-
-            # Parse memory bandwidth
-            bandwidth_match = re.search(
-                r'Memory bandwidth:\s+(\d+\.\d+)\s*GB/s', stdout)
-            if bandwidth_match:
-                metrics['memory_bandwidth_gbps'] = float(
-                    bandwidth_match.group(1))
-
-            # Parse GPU utilization
-            util_match = re.search(r'GPU utilization:\s+(\d+\.\d+)%', stdout)
-            if util_match:
-                metrics['gpu_utilization_percent'] = float(util_match.group(1))
-
-            # Parse wavefront count
-            wave_match = re.search(r'SQ_WAVES:\s+(\d+)', stdout)
-            if wave_match:
-                metrics['sq_waves'] = int(wave_match.group(1))
-
-            # If no metrics found, return basic execution info
             if not metrics:
-                metrics = {
-                    'execution_time_ms': 100.0,  # Default mock value
-                    'memory_bandwidth_gbps': 50.0,
-                    'gpu_utilization_percent': 75.0,
-                    'sq_waves': 1024
+                return {
+                    "success": False,
+                    "error": "rocprof output contained no parseable kernel rows",
+                    "execution_time_ms": 0,
                 }
 
-            metrics['success'] = True
+            metrics["success"] = True
             return metrics
 
-        except (TypeError, ValueError) as e:
+        except Exception as e:
             return {
-                'success': False,
-                'error': f'Failed to parse rocprof output: {str(e)}',
-                'execution_time_ms': 0
+                "success": False,
+                "error": f"Failed to parse rocprof output: {str(e)}",
+                "execution_time_ms": 0,
             }
 
     def get_mock_profiling_data(self, kernel_name: str = "custom", iteration: int = 1) -> Dict:
@@ -181,11 +173,21 @@ class RocprofWrapper:
         except (OSError, subprocess.SubprocessError):
             return self._get_mock_hardware_info()
 
-    def _parse_rocminfo(self, _output: str) -> Dict:
-        """Parse rocminfo output"""
-        # This would parse real rocminfo output
-        # For now, return mock data
-        return self._get_mock_hardware_info()
+    def _parse_rocminfo(self, output: str) -> Dict:
+        """Parse rocminfo output to extract hardware info."""
+        info = self._get_mock_hardware_info()  # safe MI300X defaults
+        name_match = re.search(r'^\s*Name:\s+(.+)$', output, re.MULTILINE)
+        if name_match:
+            info['gpu_name'] = name_match.group(1).strip()
+        cu_match = re.search(r'^\s*Compute Unit:\s+(\d+)',
+                             output, re.MULTILINE)
+        if cu_match:
+            info['compute_units'] = int(cu_match.group(1))
+        wf_match = re.search(
+            r'^\s*Wavefront Size:\s+(\d+)', output, re.MULTILINE)
+        if wf_match:
+            info['wavefront_size'] = int(wf_match.group(1))
+        return info
 
     def _get_mock_hardware_info(self) -> Dict:
         """Mock hardware info for MI300X"""

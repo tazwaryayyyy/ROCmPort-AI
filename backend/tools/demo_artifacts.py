@@ -20,9 +20,6 @@ from typing import Dict
 #   - Iteration 1: optimizer applies first strategy
 #   - Iteration 2 (where shown): fallback strategy after profiler-detected regression
 #   - All times in milliseconds, bandwidth in GB/s
-#
-# These are representative of the kernel class behaviour, not exact measurements.
-# Real numbers require ROCM_AVAILABLE=true on actual MI300X hardware.
 # ---------------------------------------------------------------------------
 
 KERNEL_DEMO_DATA: Dict[str, Dict] = {

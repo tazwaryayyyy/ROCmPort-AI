@@ -1,4 +1,5 @@
 # pylint: disable=broad-exception-caught
+import logging
 
 from ..models import OptimizerResult, AnalyzerResult, WorkloadType
 from ..tools.llm_client import LLMClient
@@ -77,6 +78,8 @@ Try a DIFFERENT strategy. If you applied shared memory tiling, try memory coales
         )
         data = safe_json_loads(raw)
     except Exception:
+        logging.exception(
+            "Optimizer LLM call failed; returning unmodified hip_code")
         # Fallback to original hip_code if LLM fails
         data = {
             "optimized_code": hip_code,

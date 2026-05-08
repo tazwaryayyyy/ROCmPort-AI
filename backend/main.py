@@ -145,7 +145,11 @@ async def port_cuda_code(req: PortRequest):
         task = asyncio.create_task(_run_graph())
         try:
             while True:
-                event = await queue.get()
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=120.0)
+                except asyncio.TimeoutError:
+                    yield "data: [DONE]\n\n"
+                    break
                 if event is None:
                     yield "data: [DONE]\n\n"
                     break
@@ -423,7 +427,8 @@ async def list_demo_kernels():
 # Serve compiled frontend when available; fall back to the source folder for dev.
 frontend_root = os.path.join(os.path.dirname(__file__), "..", "frontend")
 frontend_dist = os.path.join(frontend_root, "dist")
-frontend_path = frontend_dist if os.path.exists(frontend_dist) else frontend_root
+frontend_path = frontend_dist if os.path.exists(
+    frontend_dist) else frontend_root
 if os.path.exists(frontend_path):
     app.mount("/", StaticFiles(directory=frontend_path,
               html=True), name="frontend")

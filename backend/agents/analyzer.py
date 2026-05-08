@@ -1,4 +1,5 @@
 # pylint: disable=broad-exception-caught
+import logging
 
 from ..models import AnalyzerResult, WorkloadType
 from ..tools.llm_client import LLMClient
@@ -105,6 +106,8 @@ def run(cuda_code: str) -> AnalyzerResult:
         )
         data = safe_json_loads(raw)
     except Exception:
+        logging.exception(
+            "Analyzer LLM call failed; falling back to static-scan defaults")
         # Fallback to static-scan-informed defaults on LLM/parse failure
         data = {
             "kernels_found": ["unknown_kernel"],

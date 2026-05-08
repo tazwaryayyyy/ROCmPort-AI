@@ -446,7 +446,8 @@ def should_retry_decision(state: MigrationState) -> Literal["retry", "done"]:
         return "done"
     if not getattr(tester_result, "success", True):
         return "done"  # hard compile/run failure — let coordinator report it
-    speedup = float(getattr(tester_result, "speedup", 1.0) or 1.0)
+    raw = getattr(tester_result, "speedup", None)
+    speedup = float(raw) if raw is not None else 1.0
     iteration = state.get("iteration", 0)
     max_iter = state.get("max_iterations", 3)
     if speedup < 0.95 and iteration < max_iter:
