@@ -30,7 +30,15 @@ class HipifyWrapper:
                 ["hipify-clang", "--version"],
                 capture_output=True, timeout=5, check=False
             )
-            return result.returncode == 0
+            if result.returncode != 0:
+                return False
+            # Skip if no usable CUDA headers — hipify-clang will fail anyway
+            cuda_header_paths = [
+                "/usr/local/cuda/include/cuda_runtime.h",
+                "/usr/lib/cuda/include/cuda_runtime.h",
+                "/opt/cuda/include/cuda_runtime.h",
+            ]
+            return any(os.path.exists(p) for p in cuda_header_paths)
         except (OSError, subprocess.SubprocessError):
             return False
 
@@ -41,10 +49,9 @@ class HipifyWrapper:
                 f.write(cuda_code)
                 tmp_path = f.name
 
-            # Use -- separator to pass compiler flags to the internal Clang parser
-            # This is critical for Clang-based tools to distinguish tool flags from compiler flags.
-            cmd = ["hipify-clang", tmp_path, "--",
-                   "-nocudalib", "-nocudainc"]
+            # -nocudalib and -nocudainc are hipify-clang tool flags — must come BEFORE
+            # the -- separator (flags after -- go to the internal Clang parser, not the tool).
+            cmd = ["hipify-clang", "-nocudalib", "-nocudainc", tmp_path, "--"]
 
             # Debug log for build engineering
             print(f"DEBUG: Running hipify-clang command: {' '.join(cmd)}")
