@@ -10,7 +10,7 @@ WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
-    OPY . .
+    COPY . .
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 # Runtime envs: GROQ_API_KEY, ROCM_AVAILABLE, HIPCC_PATH, ROCPROF_PATH.
 # Pass secrets at docker run/deploy time; do not bake .env into the image.
