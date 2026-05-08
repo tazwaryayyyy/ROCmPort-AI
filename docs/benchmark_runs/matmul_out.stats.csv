@@ -1,0 +1,4 @@
+"Name","Calls","TotalDurationNs","AverageNs","Percentage"
+"matmul_baseline(float*, float*, float*, int) [clone .kd]",5,379467,75893,72.80766551993415
+"matmul_tiled(float*, float*, float*, int) [clone .kd]",5,130618,26123,25.06144580393752
+"__amd_rocclr_fillBufferAligned.kd",2,11106,5553,2.130888676128329

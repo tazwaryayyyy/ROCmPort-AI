@@ -1,0 +1,3 @@
+"Name","Calls","TotalDurationNs","AverageNs","Percentage"
+"reduction(float*, float*, int) [clone .kd]",10,424248,42424,94.74431754737796
+"__amd_rocclr_fillBufferAligned.kd",1,23534,23534,5.255682452622035

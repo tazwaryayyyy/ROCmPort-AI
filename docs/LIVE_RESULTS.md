@@ -1,30 +1,43 @@
-# Reproducible Results
+# Live Results — AMD Instinct MI300X
 
-The backend returns deterministic benchmark artifacts unless `ROCM_AVAILABLE=true`
-is set on real ROCm hardware. These values come from
-`backend/tools/demo_artifacts.py` and are labelled `data_source="demo_artifact"`
-in API responses.
+Measurements taken with `rocprof` on AMD Instinct MI300X (gfx942),
+ROCm 7.0, AMD Developer Cloud, **May 8 2026**.
+
+Raw profiler CSV files are in [`docs/benchmark_runs/`](benchmark_runs/).
+Values in `backend/tools/demo_artifacts.py` are labelled `data_source="mi300x_live"`
+and match these CSV files exactly.
 
 ## Benchmark Results
 
-| Kernel | Baseline HIP (ms) | Optimized HIP (ms) | Speedup | Bandwidth | Bottleneck |
-|--------|-------------------|--------------------|---------|-----------|------------|
-| matrix_multiply | 121.4 | 89.1 | 1.36x | 1843.7 GB/s | memory-bound |
-| reduction | 88.2 | 68.7 | 1.28x | 531.8 GB/s | compute-bound after wavefront fix |
-| vector_add | 45.1 | 38.2 | 1.18x | 4821.6 GB/s | memory-bound |
-| convolution_2d | 211.7 | 158.3 | 1.34x | 2134.8 GB/s | memory-bound |
+| Kernel | Baseline (ms) | Optimized (ms) | Speedup | Bandwidth | Source CSV |
+|--------|---------------|----------------|---------|-----------|------------|
+| matrix_multiply (512×512) | 0.076 | 0.026 | 2.91x | — | [matmul_out.stats.csv](benchmark_runs/matmul_out.stats.csv) |
+| vector_add (32M elements) | — | 0.098 | — | 3,918 GB/s | [vecadd_out.stats.csv](benchmark_runs/vecadd_out.stats.csv) |
+| reduction (16M elements) | — | 0.042 | — | — | [reduction.stats.csv](benchmark_runs/reduction.stats.csv) |
+| convolution_2d | 211.7 | 158.3 | 1.34x | 2,134.8 GB/s | demo_artifact (not yet measured) |
 
-## Hardware Context
+> **Note:** vector_add and reduction were run standalone; no pre-optimisation baseline
+> was captured in these runs. matrix_multiply baseline is `matmul_baseline` (hipify
+> output, no tiling); optimized is `matmul_tiled` (LDS 32×32 tile, wavefront-64 aligned).
 
-- GPU class: AMD Instinct MI300X
-- VRAM: 192GB HBM3
-- Theoretical memory bandwidth: 5.3 TB/s
-- Wavefront size: 64
-- API data source in local/demo mode: `demo_artifact`
+## rocprof Run Details
 
-## Real Hardware Mode
+- **Hardware:** AMD Instinct MI300X, gfx942
+- **ROCm version:** 7.0
+- **Platform:** AMD Developer Cloud
+- **Date:** May 8 2026
+- **Profiler:** `rocprof --stats`
+- **Wavefront size:** 64
+- **HBM3:** 192 GB, 5.3 TB/s theoretical
 
-Set `ROCM_AVAILABLE=true`, `HIPCC_PATH=hipcc`, and `ROCPROF_PATH=rocprof` on a
-real MI300X ROCm environment to replace demo artifacts with `data_source="real_rocm"`.
-Real run output should be captured separately with the exact ROCm version, kernel
-input size, compiler flags, and profiler logs.
+## Raw CSV Quick-Reference
+
+**matmul_out.stats.csv** (`docs/benchmark_runs/matmul_out.stats.csv`)
+- `matmul_baseline`: 5 calls, total 379,467 ns, avg **75,893 ns (0.076 ms)**
+- `matmul_tiled`: 5 calls, total 130,618 ns, avg **26,123 ns (0.026 ms)** → **2.91× speedup**
+
+**vecadd_out.stats.csv** (`docs/benchmark_runs/vecadd_out.stats.csv`)
+- `vector_add`: 10 calls, total 976,466 ns, avg **97,646 ns (0.098 ms)** → **3,918 GB/s**
+
+**reduction.stats.csv** (`docs/benchmark_runs/reduction.stats.csv`)
+- `reduction`: 10 calls, total 424,248 ns, avg **42,424 ns (0.042 ms)**

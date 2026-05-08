@@ -6,7 +6,7 @@ A multi-agent pipeline that migrates CUDA kernels to AMD ROCm/HIP — catching t
 
 ## Live Demo
 
-- **Backend API**: https://rocmport-ai.onrender.com
+- **Backend API**: https://rocmport-ai-q2b1.onrender.com
 - **HuggingFace Space**: https://huggingface.co/spaces/lablab-ai-amd-developer-hackathon/ROCmPort-AI
 
 ---

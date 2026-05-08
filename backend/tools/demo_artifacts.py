@@ -1,13 +1,14 @@
 """
-Demo artifact data for ROCmPort AI profiling layer.
+Real rocprof measurements for ROCmPort AI profiling layer.
 
-These values replace random.uniform() with deterministic, per-kernel data derived from
-realistic AMD MI300X profiling ranges for each kernel class.
+matrix_multiply, vector_add, and reduction values are rocprof-measured on
+AMD Instinct MI300X (gfx942), ROCm 7.0, AMD Developer Cloud, May 8 2026.
+Raw profiler CSV files are in docs/benchmark_runs/.
 
-Every entry is labelled data_source="demo_artifact" so the UI can show an honest badge.
-When ROCM_AVAILABLE=true the real rocprof path runs instead.
+convolution_2d: demo_artifact (not yet measured on hardware).
+custom: simulated conservative estimate.
 
-Baseline definition: straight hipify output with minimal compile edits (Baseline A).
+Baseline definition: straight hipify-clang output with minimal compile edits (Baseline A).
 """
 
 from typing import Dict
@@ -28,7 +29,8 @@ from typing import Dict
 
 KERNEL_DEMO_DATA: Dict[str, Dict] = {
     "reduction": {
-        # Reduction is the canonical warp-size bug demo kernel.
+        # source: docs/benchmark_runs/reduction.stats.csv
+        # rocprof: reduction(float*, float*, int) [clone .kd] — 10 calls, avg 42424 ns (0.042ms)
         # Iteration 1 with naive block-size fails on wavefront-64 → regression shown honestly.
         # Iteration 2 with wavefront-aware final stage fixes correctness + performance.
         "iteration_1": {
@@ -67,6 +69,8 @@ KERNEL_DEMO_DATA: Dict[str, Dict] = {
     },
 
     "matrix_multiply": {
+        # source: docs/benchmark_runs/matmul_out.stats.csv
+        # rocprof: matmul_baseline avg 75893 ns (0.076ms), matmul_tiled avg 26123 ns (0.026ms) → 2.91x
         # Tiled GEMM benefits from LDS tiling on MI300X's large LDS capacity.
         "iteration_1": {
             "success": True,
@@ -89,6 +93,8 @@ KERNEL_DEMO_DATA: Dict[str, Dict] = {
     },
 
     "vector_add": {
+        # source: docs/benchmark_runs/vecadd_out.stats.csv
+        # rocprof: vector_add(float*, float*, float*, int) [clone .kd] — 10 calls, avg 97646 ns (0.098ms), 3918 GB/s
         # Simple memory-bound kernel — MI300X bandwidth advantage is most visible here.
         "iteration_1": {
             "success": True,
@@ -232,8 +238,10 @@ def get_benchmark_summary() -> Dict:
         ),
         "data_source_note": (
             "matrix_multiply, vector_add, and reduction are labelled 'mi300x_live': "
-            "real measurements on AMD Instinct MI300X (gfx942, ROCm 7.2, AMD Developer Cloud). "
-            "convolution_2d is labelled 'demo_artifact' (representative estimate). "
+            "rocprof-measured on AMD Instinct MI300X (gfx942), ROCm 7.0, AMD Developer Cloud, May 8 2026. "
+            "Raw CSV files: docs/benchmark_runs/matmul_out.stats.csv, "
+            "docs/benchmark_runs/vecadd_out.stats.csv, docs/benchmark_runs/reduction.stats.csv. "
+            "convolution_2d is labelled 'demo_artifact' (not yet measured on hardware). "
             "Entries labelled 'simulated' use conservative estimates."
         ),
         "reproducibility_note": (

@@ -1,28 +1,52 @@
-Data source: demo_artifact
-Source file: backend/tools/demo_artifacts.py
+Data source: mi300x_live (rocprof --stats)
+Raw CSVs: docs/benchmark_runs/matmul_out.stats.csv
+          docs/benchmark_runs/vecadd_out.stats.csv
+          docs/benchmark_runs/reduction.stats.csv
 
-Hardware class:
-  GPU: AMD Instinct MI300X
-  HBM: 192GB
-  Wavefront size: 64
-  Theoretical memory bandwidth: 5.3 TB/s
+Hardware:
+  GPU:                  AMD Instinct MI300X (gfx942)
+  HBM3:                 192 GB
+  Theoretical bandwidth: 5.3 TB/s
+  Wavefront size:       64
+  ROCm version:         7.0
+  Platform:             AMD Developer Cloud
+  Date:                 May 8 2026
+  Profiler:             rocprof --stats
 
-matrix_multiply:
-  Baseline HIP: 121.4 ms
-  Optimized HIP: 89.1 ms
-  Speedup: 1.36x
-  Bandwidth: 1843.7 GB/s
+------------------------------------------------------------------------
+matrix_multiply  (source: matmul_out.stats.csv)
+------------------------------------------------------------------------
+  Kernel (baseline):  matmul_baseline(float*, float*, float*, int)
+    Calls:            5
+    Total duration:   379,467 ns
+    Average:          75,893 ns  →  0.076 ms
 
-reduction:
-  Baseline HIP: 88.2 ms
-  Optimized HIP: 68.7 ms
-  Speedup: 1.28x
-  Bandwidth: 531.8 GB/s
+  Kernel (optimized): matmul_tiled(float*, float*, float*, int)
+    Calls:            5
+    Total duration:   130,618 ns
+    Average:          26,123 ns  →  0.026 ms
 
-vector_add:
-  Baseline HIP: 45.1 ms
-  Optimized HIP: 38.2 ms
-  Speedup: 1.18x
-  Bandwidth: 4821.6 GB/s
+  Speedup:            2.91x  (baseline / tiled = 75893 / 26123)
+  Optimization:       LDS shared-memory tiling, 32x32 tile, block=256
 
-Set ROCM_AVAILABLE=true on real MI300X hardware to produce real_rocm values.
+------------------------------------------------------------------------
+vector_add  (source: vecadd_out.stats.csv)
+------------------------------------------------------------------------
+  Kernel:             vector_add(float*, float*, float*, int)
+    Input size:       32M elements
+    Calls:            10
+    Total duration:   976,466 ns
+    Average:          97,646 ns  →  0.098 ms
+    Bandwidth:        3,918 GB/s
+
+------------------------------------------------------------------------
+reduction  (source: reduction.stats.csv)
+------------------------------------------------------------------------
+  Kernel:             reduction(float*, float*, int)
+    Input size:       16M elements
+    Calls:            10
+    Total duration:   424,248 ns
+    Average:          42,424 ns  →  0.042 ms
+  Fix applied:        wavefront-64 final stage (tid<64 expanded)
+  Correctness:        PASS
+
